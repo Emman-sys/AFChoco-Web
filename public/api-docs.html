@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A&F Chocolate - API Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        .status-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-bottom: 30px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .endpoint-list {
+            list-style: none;
+        }
+        .endpoint-list li {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+        .get { background: #10b981; color: white; }
+        .post { background: #3b82f6; color: white; }
+        .put { background: #f59e0b; color: white; }
+        .delete { background: #ef4444; color: white; }
+        .category-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .pill {
+            background: #667eea;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        .button {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 5px;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍫 A&F Chocolate</h1>
+        <p class="subtitle">Firebase-Powered E-Commerce API</p>
+        <div class="status-badge">✓ Server Running</div>
+
+        <div class="section">
+            <h2>🚀 Quick Links</h2>
+            <div>
+                <a href="/api/health" class="button" target="_blank">Health Check</a>
+                <a href="/api/products" class="button" target="_blank">View Products</a>
+                <a href="/api/categories" class="button" target="_blank">Categories</a>
+                <a href="/firebase-example.html" class="button">Firebase Example</a>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong>📱 Mobile App Compatible</strong><br>
+            This API is fully compatible with AFMobile (User App) and AFAdmin (Admin App).
+            All apps share the same Firebase Firestore database.
+        </div>
+
+        <div class="section">
+            <h2>📊 Available Categories</h2>
+            <div class="category-pills">
+                <span class="pill">WHITE</span>
+                <span class="pill">DARK</span>
+                <span class="pill">MILK</span>
+                <span class="pill">MIXED</span>
+                <span class="pill">SPECIALTY</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔌 API Endpoints</h2>
+            <ul class="endpoint-list">
+                <li>
+                    <span class="method get">GET</span>
+                    <code>/api/products</code> - List all products
+                </li>
+                <li>
+                    <span class="method get">GET</span>
+                    <code>/api/products/:id</code> - Get product details
+                </li>
+                <li>
+                    <span class="method post">POST</span>
+                    <code>/api/cart/add</code> - Add item to cart (auth required)
+                </li>
+                <li>
+                    <span class="method get">GET</span>
+                    <code>/api/cart</code> - Get user's cart (auth required)
+                </li>
+                <li>
+                    <span class="method post">POST</span>
+                    <code>/api/orders/create</code> - Create order (auth required)
+                </li>
+                <li>
+                    <span class="method get">GET</span>
+                    <code>/api/orders/my-orders</code> - Get user's orders (auth required)
+                </li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>📚 Documentation</h2>
+            <ul class="endpoint-list">
+                <li>📄 <strong>DATABASE_SCHEMA.md</strong> - Complete database schema</li>
+                <li>📄 <strong>FIREBASE_MIGRATION.md</strong> - Setup & migration guide</li>
+                <li>📄 <strong>SCHEMA_ALIGNMENT.md</strong> - Mobile app compatibility</li>
+            </ul>
+        </div>
+
+        <div class="info-box">
+            <strong>🔐 Authentication Required</strong><br>
+            Most endpoints require Firebase Authentication. Include the ID token in the Authorization header:<br>
+            <code style="background: white; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">
+                Authorization: Bearer &lt;your-id-token&gt;
+            </code>
+        </div>
+
+        <div class="footer">
+            <p><strong>Firebase Project:</strong> anf-chocolate</p>
+            <p><strong>Version:</strong> 1.0.0 | <strong>Status:</strong> Production Ready</p>
+            <p style="margin-top: 10px; color: #999;">Last Updated: February 16, 2026</p>
+        </div>
+    </div>
+</body>
+</html>

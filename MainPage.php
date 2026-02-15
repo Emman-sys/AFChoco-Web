@@ -13,66 +13,89 @@ class CategoryManager {
         $this->loadCategoriesFromDatabase();
     }
     
-    // Load categories dynamically from database
+    // Load categories dynamically from Firestore API
     private function loadCategoriesFromDatabase() {
         try {
-            $stmt = $this->conn->prepare("SELECT category_id, category_name FROM categories ORDER BY category_id");
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
             $gradients = [
-                1 => 'linear-gradient(to bottom, #55361A, #CDACB1)',
-                2 => 'linear-gradient(to bottom, #BFB886, #F3E794)', 
-                3 => 'linear-gradient(to bottom, #D97272, #F8DDDD)',
-                4 => 'linear-gradient(to bottom, #71EEEC, #C1ACAC)',
-                5 => 'linear-gradient(to bottom, #6B6060, #7C6F6F, #8D7D7D)',
-                6 => 'linear-gradient(to bottom, #E6E6FA, #DDA0DD)',
-                7 => 'linear-gradient(to bottom, #FFE4E1, #FFC0CB)',
-                8 => 'linear-gradient(to bottom, #F0E68C, #BDB76B)',
+                'DARK' => 'linear-gradient(to bottom, #55361A, #CDACB1)',
+                'WHITE' => 'linear-gradient(to bottom, #BFB886, #F3E794)', 
+                'MILK' => 'linear-gradient(to bottom, #D97272, #F8DDDD)',
+                'MIXED' => 'linear-gradient(to bottom, #71EEEC, #C1ACAC)',
+                'SPECIALTY' => 'linear-gradient(to bottom, #6B6060, #7C6F6F, #8D7D7D)',
             ];
             
-            $this->categories = []; // Initialize the array
+            // Get categories from API
+            global $firebaseAPI;
+            $response = $firebaseAPI->getCategories();
+            $categoryNames = $response['categories'] ?? [];
             
-            while ($row = $result->fetch_assoc()) {
-                $category_id = $row['category_id'];
-                $category_name = $row['category_name'];
+            $this->categories = []; // Initialize the array
+            $id = 1;
+            
+            foreach ($categoryNames as $category_name) {
+                // Safely get gradient with default fallback
+                $gradient = 'linear-gradient(to bottom, #C647CC, #ECC7ED)';
+                if (is_string($category_name) && isset($gradients[$category_name])) {
+                    $gradient = $gradients[$category_name];
+                }
                 
-                $this->categories[$category_id] = [
+                $this->categories[$id] = [
                     'name' => $category_name,
-                    'gradient' => isset($gradients[$category_id]) ? $gradients[$category_id] : 'linear-gradient(to bottom, #C647CC, #ECC7ED)',
-                    'placeholder_letter' => strtoupper(substr($category_name, 0, 1))
+                    'gradient' => $gradient,
+                    'placeholder_letter' => is_string($category_name) ? strtoupper(substr($category_name, 0, 1)) : 'C'
                 ];
+                $id++;
             }
         } catch (Exception $e) {
-            error_log("CategoryManager: Failed to load categories from database - " . $e->getMessage());
+            error_log("CategoryManager: Failed to load categories from API - " . $e->getMessage());
             $this->categories = []; // Initialize empty array on error
         }
     }
     
-    // Get category image
+    // Get category image from first product in category
     public function getCategoryImage($category_id) {
-        $stmt = $this->conn->prepare("SELECT product_id FROM products WHERE category_id = ? AND product_image IS NOT NULL LIMIT 1");
-        $stmt->bind_param("i", $category_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $product = $result->fetch_assoc();
+        global $firebaseAPI;
         
-        if ($product) {
-            return "display_image.php?id=" . $product['product_id'];
+        // Map ID to category name
+        $categoryMap = [
+            1 => 'DARK',
+            2 => 'WHITE',
+            3 => 'MILK',
+            4 => 'MIXED',
+            5 => 'SPECIALTY'
+        ];
+        
+        $categoryName = $categoryMap[$category_id] ?? null;
+        if (!$categoryName) return null;
+        
+        $response = $firebaseAPI->getProducts($categoryName);
+        $products = $response['products'] ?? [];
+        
+        // Get first product with image
+        foreach ($products as $product) {
+            if (!empty($product['imageUrl'])) {
+                return $product['imageUrl'];
+            }
         }
+        
         return null;
     }
     
     // Get all products image
     public function getAllProductsImage() {
-        $stmt = $this->conn->prepare("SELECT product_id FROM products WHERE product_image IS NOT NULL ORDER BY RAND() LIMIT 1");
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $product = $result->fetch_assoc();
+        global $firebaseAPI;
         
-        if ($product) {
-            return "display_image.php?id=" . $product['product_id'];
+        $response = $firebaseAPI->getProducts();
+        $products = $response['products'] ?? [];
+        
+        // Get random product with image
+        shuffle($products);
+        foreach ($products as $product) {
+            if (!empty($product['imageUrl'])) {
+                return $product['imageUrl'];
+            }
         }
+        
         return null;
     }
     
@@ -86,7 +109,7 @@ class CategoryManager {
         $html .= "<div class='category-item category-item-all' data-category=''>";
         
         if ($all_products_image) {
-            $html .= "<img src='{$all_products_image}' class='category-image' alt='All Products'>";
+            $html .= "<img src='" . htmlspecialchars($all_products_image) . "' class='category-image' alt='All Products'>";
         } else {
             $html .= "<div class='product-placeholder' style='position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px;'>";
             $html .= "ALL";
@@ -103,14 +126,14 @@ class CategoryManager {
             $html .= "<div class='category-item category-item-{$id}' data-category='{$id}'>";
             
             if ($image_src) {
-                $html .= "<img src='{$image_src}' class='category-image' alt='{$category['name']}'>";
+                $html .= "<img src='" . htmlspecialchars($image_src) . "' class='category-image' alt='" . htmlspecialchars($category['name']) . "'>";
             } else {
                 $html .= "<div class='product-placeholder' style='position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px;'>";
-                $html .= $category['placeholder_letter'];
+                $html .= htmlspecialchars($category['placeholder_letter']);
                 $html .= "</div>";
             }
             
-            $html .= "<div class='category-label'>{$category['name']}</div>";
+            $html .= "<div class='category-label'>" . htmlspecialchars($category['name']) . "</div>";
             $html .= "</div>";
         }
         return $html;
@@ -123,17 +146,15 @@ class CategoryManager {
 }
 
 function generateProductCarousel($conn) {
-    $stmt = $conn->prepare("
-        SELECT p.product_id, p.name, p.price, p.stock_quantity,
-               CASE WHEN p.product_image IS NOT NULL THEN 1 ELSE 0 END as has_image
-        FROM products p 
-        ORDER BY RAND() 
-        LIMIT 5
-    ");
+    global $firebaseAPI;
     
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $products = $result->fetch_all(MYSQLI_ASSOC);
+    // Get products from API
+    $response = $firebaseAPI->getProducts();
+    $allProducts = $response['products'] ?? [];
+    
+    // Shuffle and take 5
+    shuffle($allProducts);
+    $products = array_slice($allProducts, 0, 5);
     
     if (empty($products)) {
         return '<div class="product-carousel"><p>No products available</p></div>';
@@ -152,30 +173,36 @@ function generateProductCarousel($conn) {
     $html .= '<div class="carousel-track">';
     
     foreach ($products as $product) {
-        $html .= '<div class="carousel-item" data-product-id="' . $product['product_id'] . '" onclick="openProductModal(' . $product['product_id'] . ')">';
+        $productId = $product['id'] ?? '';
+        $productName = $product['name'] ?? '';
+        $productPrice = $product['price'] ?? 0;
+        $stockLevel = $product['stockLevel'] ?? 0;
+        $imageUrl = $product['imageUrl'] ?? '';
+        
+        $html .= '<div class="carousel-item" data-product-id="' . $productId . '" onclick="openProductModal(\'' . $productId . '\')">';
         $html .= '<div class="carousel-product-card">';
         
         $html .= '<div class="carousel-product-image">';
-        if ($product['has_image']) {
-            $html .= '<img src="display_image.php?id=' . $product['product_id'] . '" alt="' . htmlspecialchars($product['name']) . '">';
+        if ($imageUrl) {
+            $html .= '<img src="' . htmlspecialchars($imageUrl) . '" alt="' . htmlspecialchars($productName) . '">';
         } else {
-            $html .= '<div class="carousel-placeholder-img">' . strtoupper(substr($product['name'], 0, 1)) . '</div>';
+            $html .= '<div class="carousel-placeholder-img">' . strtoupper(substr($productName, 0, 1)) . '</div>';
         }
         $html .= '</div>';
         
         $html .= '<div class="carousel-product-info">';
-        $html .= '<h4 class="product-name">' . htmlspecialchars($product['name']) . '</h4>';
-        $html .= '<div class="carousel-price">₱' . number_format($product['price'], 2) . '</div>'; // Changed from $ to ₱
+        $html .= '<h4 class="product-name">' . htmlspecialchars($productName) . '</h4>';
+        $html .= '<div class="carousel-price">₱' . number_format($productPrice, 2) . '</div>';
         
-        if ($product['stock_quantity'] <= 0) {
+        if ($stockLevel <= 0) {
             $html .= '<div class="stock-info">Out of Stock</div>';
         } else {
             $html .= '<div class="stock-info">In Stock</div>';
         }
         
         $html .= '<div class="product-actions">';
-        $html .= '<button class="carousel-add-btn" onclick="event.stopPropagation(); addToCartFromCarousel(' . $product['product_id'] . ', event)">Add to Cart</button>';
-        $html .= '<button class="view-details-btn" onclick="event.stopPropagation(); openProductModal(' . $product['product_id'] . ')">View Details</button>';
+        $html .= '<button class="carousel-add-btn" onclick="event.stopPropagation(); addToCartFromCarousel(\'' . $productId . '\', event)">Add to Cart</button>';
+        $html .= '<button class="view-details-btn" onclick="event.stopPropagation(); openProductModal(\'' . $productId . '\')">View Details</button>';
         $html .= '</div>';
         
         $html .= '</div>';
@@ -202,27 +229,43 @@ function generateProductCarousel($conn) {
 // Initialize the category manager
 $categoryManager = new CategoryManager($conn);
 
-// Fetch products from database
+// Fetch products from Firestore API
 function getProducts($category_id = null) {
-    global $conn;
+    global $firebaseAPI;
     
-    if ($category_id) {
-        $stmt = $conn->prepare("SELECT p.product_id, p.name, p.description, p.price, p.stock_quantity, c.category_name,
-                               CASE WHEN p.product_image IS NOT NULL THEN 1 ELSE 0 END as has_image
-                               FROM products p 
-                               JOIN categories c ON p.category_id = c.category_id 
-                               WHERE p.category_id = ?");
-        $stmt->bind_param("i", $category_id);
-    } else {
-        $stmt = $conn->prepare("SELECT p.product_id, p.name, p.description, p.price, p.stock_quantity, c.category_name,
-                               CASE WHEN p.product_image IS NOT NULL THEN 1 ELSE 0 END as has_image
-                               FROM products p 
-                               JOIN categories c ON p.category_id = c.category_id");
+    // Map category ID to category name
+    $categoryMap = [
+        1 => 'DARK',
+        2 => 'WHITE',
+        3 => 'MILK',
+        4 => 'MIXED',
+        5 => 'SPECIALTY'
+    ];
+    
+    $categoryName = null;
+    if ($category_id && isset($categoryMap[$category_id])) {
+        $categoryName = $categoryMap[$category_id];
     }
     
-    $stmt->execute();
-    $result = $stmt->get_result();
-    return $result->fetch_all(MYSQLI_ASSOC);
+    $response = $firebaseAPI->getProducts($categoryName);
+    $products = $response['products'] ?? [];
+    
+    // Convert Firestore format to expected format
+    $formatted = [];
+    foreach ($products as $product) {
+        $formatted[] = [
+            'product_id' => $product['id'] ?? '',
+            'name' => $product['name'] ?? '',
+            'description' => $product['description'] ?? '',
+            'price' => $product['price'] ?? 0,
+            'stock_quantity' => $product['stockLevel'] ?? 0,
+            'category_name' => $product['category'] ?? '',
+            'has_image' => !empty($product['imageUrl']) ? 1 : 0,
+            'product_image' => $product['imageUrl'] ?? null
+        ];
+    }
+    
+    return $formatted;
 }
 // Get all products or filter by category
 $category_filter = isset($_GET['category']) ? $_GET['category'] : null;
@@ -1420,8 +1463,8 @@ if (isset($_SESSION['user_id'])) {
            data-name="<?php echo htmlspecialchars($product['name']); ?>">
       
         <div class="product-image-container">
-          <?php if ($product['has_image']): ?>
-            <img src="display_image.php?id=<?php echo $product['product_id']; ?>" 
+          <?php if ($product['has_image'] && !empty($product['product_image'])): ?>
+            <img src="<?php echo htmlspecialchars($product['product_image']); ?>" 
                  alt="<?php echo htmlspecialchars($product['name']); ?>" 
                  class="product-image"
                  loading="lazy">
@@ -1647,6 +1690,25 @@ function addToCartFromCarousel(productId, event) {
     button.innerHTML = '⏳';
     button.disabled = true;
     
+    // Get product data from the carousel card
+    const productCard = document.querySelector(`.carousel-item[data-product-id="${productId}"]`);
+    let productName = 'Product';
+    let productPrice = 0;
+    let productImageUrl = '';
+    
+    if (productCard) {
+        const nameElement = productCard.querySelector('.product-name') || productCard.querySelector('h4');
+        const priceElement = productCard.querySelector('.carousel-price');
+        const imageElement = productCard.querySelector('.carousel-product-image img') || productCard.querySelector('img');
+        
+        if (nameElement) productName = nameElement.textContent.trim();
+        if (priceElement) {
+            const priceText = priceElement.textContent.trim();
+            productPrice = parseFloat(priceText.replace('₱', '').replace('$', '') || 0);
+        }
+        if (imageElement) productImageUrl = imageElement.src;
+    }
+    
     fetch('add_to_cart.php', {
         method: 'POST',
         headers: {
@@ -1654,6 +1716,9 @@ function addToCartFromCarousel(productId, event) {
         },
         body: JSON.stringify({
             product_id: productId,
+            productName: productName,
+            productPrice: productPrice,
+            productImageUrl: productImageUrl,
             quantity: 1
         })
     })
@@ -2095,11 +2160,12 @@ function openProductModal(productId) {
     
     if (modalQuantityDisplay) modalQuantityDisplay.textContent = '1';
     
-    // Set current product data
+    // Set current product data (keep productId as string for Firebase compatibility)
     currentProduct = {
-        id: parseInt(productId),
+        id: productId,
         name: productName,
         price: productPrice,
+        imageUrl: imageSrc || '',
         stock: stockText
     };
     
@@ -2159,6 +2225,9 @@ function addToCartFromModal() {
         },
         body: JSON.stringify({
             product_id: currentProduct.id,
+            productName: currentProduct.name,
+            productPrice: currentProduct.price,
+            productImageUrl: currentProduct.imageUrl,
             quantity: modalQuantity
         })
     })
@@ -2221,6 +2290,25 @@ function addToCart(productId, event) {
     button.innerHTML = '⏳';
     button.disabled = true;
     
+    // Get product data from the product card
+    const productCard = document.querySelector(`[data-product-id="${productId}"]`);
+    let productName = 'Product';
+    let productPrice = 0;
+    let productImageUrl = '';
+    
+    if (productCard) {
+        const nameElement = productCard.querySelector('.product-name');
+        const priceElement = productCard.querySelector('.product-price');
+        const imageElement = productCard.querySelector('.product-image');
+        
+        if (nameElement) productName = nameElement.textContent.trim();
+        if (priceElement) {
+            const priceText = priceElement.textContent.trim();
+            productPrice = parseFloat(priceText.replace('₱', '').replace('$', '') || 0);
+        }
+        if (imageElement) productImageUrl = imageElement.src;
+    }
+    
     fetch('add_to_cart.php', {
         method: 'POST',
         headers: {
@@ -2228,6 +2316,9 @@ function addToCart(productId, event) {
         },
         body: JSON.stringify({
             product_id: productId,
+            productName: productName,
+            productPrice: productPrice,
+            productImageUrl: productImageUrl,
             quantity: 1
         })
     })
@@ -2319,9 +2410,8 @@ function goToProfile() {
 function fetchProductDescription(productId) {
     console.log('Fetching product description for ID:', productId);
     
-    // Convert to integer and validate
-    const numericProductId = parseInt(productId);
-    if (!numericProductId || numericProductId <= 0) {
+    // Validate product ID exists (Firebase IDs are strings)
+    if (!productId || productId.trim() === '') {
         console.error('Invalid product ID:', productId);
         return;
     }
@@ -2334,17 +2424,9 @@ function fetchProductDescription(productId) {
     
     descriptionElement.textContent = 'Loading description...';
     
-    console.log('Sending request with product_id:', numericProductId);
+    console.log('Fetching product from API:', productId);
     
-    fetch('get_product_details.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            product_id: numericProductId  // Send as integer
-        })
-    })
+    fetch('http://localhost:3000/api/products/' + encodeURIComponent(productId))
     .then(response => {
         console.log('Response status:', response.status);
         if (!response.ok) {
@@ -2374,14 +2456,14 @@ function fetchProductDescription(productId) {
                 modalPrice.textContent = '₱' + parseFloat(product.price).toFixed(2);
             }
             
-            if (modalStock && product.stock_quantity !== undefined) {
+            if (modalStock && product.stockLevel !== undefined) {
                 let stockText, stockClass;
                 
-                if (product.stock_quantity <= 0) {
+                if (product.stockLevel <= 0) {
                     stockText = 'Out of Stock';
                     stockClass = 'modal-stock-out';
-                } else if (product.stock_quantity <= 10) {
-                    stockText = `Only ${product.stock_quantity} left in stock`;
+                } else if (product.stockLevel <= 10) {
+                    stockText = `Only ${product.stockLevel} left in stock`;
                     stockClass = 'modal-stock-low';
                 } else {
                     stockText = 'In Stock';

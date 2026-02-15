@@ -1,50 +1,58 @@
 <?php
-// Start session and include database connection
+// Start session and include Firebase API
 session_start();
-require 'db_connect.php';
+require_once 'firebase_api.php';
 
 // Security check - redirect to login if user not authenticated
-if (!isset($_SESSION['user_id'])) {
+if (!isset($_SESSION['user_id']) && !isset($_SESSION['user_email'])) {
     header('Location: Welcome.php');
     exit;
 }
 
-$user_id = $_SESSION['user_id'];
+$user_id = $_SESSION['user_id'] ?? '';
+$user_email = $_SESSION['user_email'] ?? '';
+$user_name = $_SESSION['user_name'] ?? 'User';
 
-// Fetch user information for sidebar display
-$user_stmt = $conn->prepare("SELECT name, email FROM users WHERE user_id = ?");
-if (!$user_stmt) {
-    die("Error preparing user query: " . $conn->error);
-}
-$user_stmt->bind_param("i", $user_id);
-$user_stmt->execute();
-$user_info = $user_stmt->get_result()->fetch_assoc();
+// Initialize Firebase API
+$firebaseAPI = new FirebaseAPI();
 
-// Get user's orders with payment info and map payment status to delivery status
-$orders_stmt = $conn->prepare("
-    SELECT o.order_id, o.order_date, o.status, o.total_amount, o.shipping_address,
-           p.payment_method, p.payment_status,
-           COUNT(oi.order_item_id) as item_count,
-           CASE 
-               WHEN p.payment_status = 'completed' THEN 'delivered'
-               WHEN p.payment_status = 'pending' THEN 'pending'
-               ELSE COALESCE(o.status, 'pending')
-           END as display_status
-    FROM orders o
-    LEFT JOIN payments p ON o.order_id = p.order_id
-    LEFT JOIN orderitems oi ON o.order_id = oi.order_id
-    WHERE o.user_id = ?
-    GROUP BY o.order_id
-    ORDER BY o.order_date DESC
-");
+// Fetch user information
+$user_info = [
+    'name' => $user_name,
+    'email' => $user_email
+];
 
-if (!$orders_stmt) {
-    die("Error preparing orders query: " . $conn->error);
+// If we have a Firebase token, get full profile
+if (isset($_SESSION['firebase_token'])) {
+    $firebaseAPI->setAuthToken($_SESSION['firebase_token']);
+    $profile = $firebaseAPI->getProfile();
+    
+    if ($profile && isset($profile['success']) && $profile['success']) {
+        $userProfile = $profile['user'];
+        $user_info['name'] = $userProfile['username'] ?? $userProfile['firstName'] ?? $user_name;
+        $user_info['email'] = $userProfile['email'] ?? $user_email;
+    }
 }
 
-$orders_stmt->bind_param("i", $user_id);
-$orders_stmt->execute();
-$orders = $orders_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+// Get user's orders from Firebase
+$ordersResponse = $firebaseAPI->getMyOrders();
+$orders = [];
+
+if ($ordersResponse && isset($ordersResponse['orders'])) {
+    foreach ($ordersResponse['orders'] as $order) {
+        $orders[] = [
+            'order_id' => $order['id'] ?? '',
+            'order_date' => $order['createdAt'] ?? date('Y-m-d H:i:s'),
+            'status' => $order['orderStatus'] ?? 'pending',
+            'total_amount' => $order['totalAmount'] ?? 0,
+            'shipping_address' => $order['deliveryAddress'] ?? '',
+            'payment_method' => $order['paymentMethod'] ?? 'COD',
+            'payment_status' => $order['paymentStatus'] ?? 'pending',
+            'item_count' => count($order['items'] ?? []),
+            'display_status' => $order['orderStatus'] ?? 'pending'
+        ];
+    }
+}
 ?>
 
 <!DOCTYPE html>

@@ -1,25 +1,25 @@
 <?php
 session_start();
-if (!isset($_SESSION["user_id"])) {
-  header("Location: Login.php");
+if (!isset($_SESSION["user_id"]) && !isset($_SESSION["user_email"])) {
+  header("Location: Welcome.php");
   exit();
 }
 
-// Fetch user's name from database
-require 'db_connect.php';
-$username = "User"; // Default fallback
+// Get user's name from session (set during login)
+$username = $_SESSION['user_name'] ?? "User";
 
-if ($conn) {
-  $stmt = $conn->prepare("SELECT name FROM users WHERE user_id = ?");
-  if ($stmt) {
-    $stmt->bind_param("i", $_SESSION["user_id"]);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result->num_rows > 0) {
-      $user = $result->fetch_assoc();
-      $username = $user['name'];
-    }
-    $stmt->close();
+// If username is not in session, try to fetch from Firebase
+if ($username === "User" && isset($_SESSION['firebase_token'])) {
+  require_once 'firebase_api.php';
+  $firebaseAPI = new FirebaseAPI();
+  $firebaseAPI->setAuthToken($_SESSION['firebase_token']);
+  
+  $profile = $firebaseAPI->getProfile();
+  if ($profile && isset($profile['success']) && $profile['success']) {
+    $user = $profile['user'];
+    $username = $user['username'] ?? $user['firstName'] ?? "User";
+    // Update session
+    $_SESSION['user_name'] = $username;
   }
 }
 ?>

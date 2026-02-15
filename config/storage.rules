@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Product images - admins can upload, anyone can read
+    match /products/{productId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                   get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // User profile images - users can upload their own
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

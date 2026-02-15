@@ -11,6 +11,23 @@ $isLoggedIn = isset($_SESSION["user_id"]);
    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Merriweather+Sans:wght@700&display=swap" rel="stylesheet" />
    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
    <link rel="stylesheet" href="styles.css">
+   
+   <!-- Firebase SDK -->
+   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+   <script>
+     // Initialize Firebase
+     const firebaseConfig = {
+       apiKey: "AIzaSyCJPY70uT6qNqs2J2GW3zWAAKeQ_rQ1tUk",
+       authDomain: "anf-chocolate.firebaseapp.com",
+       projectId: "anf-chocolate",
+       storageBucket: "anf-chocolate.firebasestorage.app",
+       messagingSenderId: "899676195175",
+       appId: "1:899676195175:web:0c38236d38cb4103cc47c2"
+     };
+     firebase.initializeApp(firebaseConfig);
+     const auth = firebase.auth();
+   </script>
 
 <style>
   body{
@@ -409,12 +426,12 @@ $isLoggedIn = isset($_SESSION["user_id"]);
     <form class="login-form" id="loginForm">
       <div class="form-group">
         <label class="input-label">Email</label>
-        <input type="email" class="form-input" id="loginEmail" name="email" required />
+        <input type="email" class="form-input" id="loginEmail" name="email" autocomplete="email" required />
       </div>
       <div class="form-group">
         <label class="input-label">Password</label>
         <div style="position: relative;">
-          <input type="password" class="form-input" name="password" id="loginPassword" required />
+          <input type="password" class="form-input" name="password" id="loginPassword" autocomplete="current-password" required />
           <button type="button" onclick="togglePassword('loginPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#333;cursor:pointer;">Show</button>
         </div>
       </div>
@@ -434,26 +451,26 @@ $isLoggedIn = isset($_SESSION["user_id"]);
     <form class="login-form" id="signupForm" style="gap: 15px;">
       <div class="form-group">
         <label class="input-label">Username</label>
-        <input type="text" class="form-input" name="username" required />
+        <input type="text" class="form-input" name="username" autocomplete="username" required />
       </div>
       <div class="form-group">
         <label class="input-label">Email</label>
-        <input type="email" class="form-input" name="email" required />
+        <input type="email" class="form-input" name="email" autocomplete="email" required />
       </div>
       <div class="form-group">
         <label class="input-label">Password</label>
         <div style="position: relative;">
-          <input type="password" class="form-input" name="password" id="signupPassword" required />
+          <input type="password" class="form-input" name="password" id="signupPassword" autocomplete="new-password" required />
           <button type="button" onclick="togglePassword('signupPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#333;cursor:pointer;">Show</button>
         </div>
       </div>
       <div class="form-group">
         <label class="input-label">Phone Number</label>
-        <input type="text" class="form-input" name="phone" required />
+        <input type="tel" class="form-input" name="phone" autocomplete="tel" required />
       </div>
       <div class="form-group">
         <label class="input-label">Address</label>
-        <input type="text" class="form-input" name="address" required />
+        <input type="text" class="form-input" name="address" autocomplete="street-address" required />
       </div>
       <button type="submit" class="login-button">Sign Up</button>
       <p class="signup-text">
@@ -497,10 +514,11 @@ function switchToSignup() {
 }
 
 // Login form submission
-document.getElementById('loginForm').addEventListener('submit', function(e) {
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
   e.preventDefault();
   
-  const formData = new FormData(this);
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
   const submitButton = this.querySelector('button[type="submit"]');
   const originalText = submitButton.textContent;
   
@@ -510,135 +528,148 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
   submitButton.textContent = 'Signing In...';
   submitButton.disabled = true;
   
-  fetch('login_popup.php', {  // Make sure this points to your working login file
-    method: 'POST',
-    body: formData
-  })
-  .then(response => {
-    console.log('Response status:', response.status);
+  try {
+    // Sign in with Firebase Auth
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    // Get Firebase ID token
+    const idToken = await user.getIdToken();
+    
+    // Send token to PHP backend to create session
+    const formData = new FormData();
+    formData.append('idToken', idToken);
+    formData.append('email', email);
+    formData.append('uid', user.uid);
+    
+    const response = await fetch('login_popup.php', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      document.getElementById('loginMessage').innerHTML = '<div class="success-message">' + data.message + '</div>';
+      setTimeout(() => {
+        window.location.href = data.redirect;
+      }, 1000);
+    } else {
+      document.getElementById('loginMessage').innerHTML = '<div class="error-message">' + data.message + '</div>';
+      submitButton.textContent = originalText;
+      submitButton.disabled = false;
     }
     
-    return response.text();
-  })
-  .then(text => {
-    console.log('Raw response:', text);
+  } catch (error) {
+    console.error('Login error:', error);
+    let errorMessage = 'Login failed';
     
-    // Check if response is empty
-    if (!text.trim()) {
-      throw new Error('Empty response from server');
+    if (error.code === 'auth/user-not-found') {
+      errorMessage = 'Email not found';
+    } else if (error.code === 'auth/wrong-password') {
+      errorMessage = 'Incorrect password';
+    } else if (error.code === 'auth/invalid-email') {
+      errorMessage = 'Invalid email address';
+    } else if (error.code === 'auth/too-many-requests') {
+      errorMessage = 'Too many attempts. Please try again later';
+    } else if (error.message) {
+      errorMessage = error.message;
     }
     
-    // Find the JSON part (in case there's extra content)
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}') + 1;
-    
-    if (jsonStart === -1) {
-      throw new Error('No JSON found in response');
-    }
-    
-    const jsonText = text.substring(jsonStart, jsonEnd);
-    
-    try {
-      const data = JSON.parse(jsonText);
-      
-      if (data.success) {
-        document.getElementById('loginMessage').innerHTML = '<div class="success-message">' + data.message + '</div>';
-        setTimeout(() => {
-          window.location.href = data.redirect;
-        }, 1000);
-      } else {
-        document.getElementById('loginMessage').innerHTML = '<div class="error-message">' + data.message + '</div>';
-      }
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      document.getElementById('loginMessage').innerHTML = '<div class="error-message">Server response error</div>';
-    }
-    
+    document.getElementById('loginMessage').innerHTML = '<div class="error-message">' + errorMessage + '</div>';
     submitButton.textContent = originalText;
     submitButton.disabled = false;
-  })
-  .catch(error => {
-    console.error('Fetch error:', error);
-    document.getElementById('loginMessage').innerHTML = '<div class="error-message">Connection error: ' + error.message + '</div>';
-    submitButton.textContent = originalText;
-    submitButton.disabled = false;
-  });
+  }
 });
 
 // Signup form submission
-document.getElementById('signupForm').addEventListener('submit', function(e) {
+document.getElementById('signupForm').addEventListener('submit', async function(e) {
   e.preventDefault();
   
-  const formData = new FormData(this);
+  const username = this.querySelector('[name="username"]').value;
+  const email = this.querySelector('[name="email"]').value;
+  const password = this.querySelector('[name="password"]').value;
+  const phone = this.querySelector('[name="phone"]')?.value || '';
+  const address = this.querySelector('[name="address"]')?.value || '';
+  
   const submitButton = this.querySelector('button[type="submit"]');
   const originalText = submitButton.textContent;
   
   // Clear previous messages
   document.getElementById('signupMessage').innerHTML = '';
   
+  // Validation
+  if (!username || !email || !password) {
+    document.getElementById('signupMessage').innerHTML = '<div class="error-message">Please fill in all required fields</div>';
+    return;
+  }
+  
+  if (password.length < 6) {
+    document.getElementById('signupMessage').innerHTML = '<div class="error-message">Password must be at least 6 characters</div>';
+    return;
+  }
+  
   submitButton.textContent = 'Creating Account...';
   submitButton.disabled = true;
   
-  fetch('signup_popup.php', {
-    method: 'POST',
-    body: formData
-  })
-  .then(response => {
-    console.log('Signup response status:', response.status);
+  try {
+    // Create user in Firebase Auth
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+    const user = userCredential.user;
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    // Get Firebase ID token
+    const idToken = await user.getIdToken();
     
-    return response.text();
-  })
-  .then(text => {
-    console.log('Signup raw response:', text);
+    // Send user data to PHP backend to create profile in Firestore
+    const formData = new FormData();
+    formData.append('idToken', idToken);
+    formData.append('username', username);
+    formData.append('email', email);
+    formData.append('uid', user.uid);
+    formData.append('phone', phone);
+    formData.append('address', address);
     
-    // Check if response is empty
-    if (!text.trim()) {
-      throw new Error('Empty response from server');
-    }
+    const response = await fetch('signup_popup.php', {
+      method: 'POST',
+      body: formData
+    });
     
-    // Find the JSON part (in case there's extra content)
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}') + 1;
+    const data = await response.json();
     
-    if (jsonStart === -1) {
-      throw new Error('No JSON found in response');
-    }
-    
-    const jsonText = text.substring(jsonStart, jsonEnd);
-    
-    try {
-      const data = JSON.parse(jsonText);
-      
-      if (data.success) {
-        document.getElementById('signupMessage').innerHTML = '<div class="success-message">' + data.message + '</div>';
-        setTimeout(() => {
+    if (data.success) {
+      document.getElementById('signupMessage').innerHTML = '<div class="success-message">' + data.message + '</div>';
+      setTimeout(() => {
+        if (data.redirect) {
+          window.location.href = data.redirect;
+        } else {
           closePopup('signupPopup');
           openPopup('loginPopup');
-        }, 1500);
-      } else {
-        document.getElementById('signupMessage').innerHTML = '<div class="error-message">' + data.message + '</div>';
-      }
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      document.getElementById('signupMessage').innerHTML = '<div class="error-message">Server response error</div>';
+        }
+      }, 1500);
+    } else {
+      document.getElementById('signupMessage').innerHTML = '<div class="error-message">' + data.message + '</div>';
+      submitButton.textContent = originalText;
+      submitButton.disabled = false;
     }
     
-    submitButton.textContent = originalText;
-    submitButton.disabled = false;
-  })
-  .catch(error => {
+  } catch (error) {
     console.error('Signup error:', error);
-    document.getElementById('signupMessage').innerHTML = '<div class="error-message">Network error: ' + error.message + '</div>';
+    let errorMessage = 'Registration failed';
+    
+    if (error.code === 'auth/email-already-in-use') {
+      errorMessage = 'Email already in use';
+    } else if (error.code === 'auth/invalid-email') {
+      errorMessage = 'Invalid email address';
+    } else if (error.code === 'auth/weak-password') {
+      errorMessage = 'Password is too weak';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    document.getElementById('signupMessage').innerHTML = '<div class="error-message">' + errorMessage + '</div>';
     submitButton.textContent = originalText;
     submitButton.disabled = false;
-  });
+  }
 });
 
 // Close popup when clicking outside

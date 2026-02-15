@@ -1,43 +1,64 @@
 <?php
 session_start();
-require 'db_connect.php';
+require_once 'firebase_api.php';
 
 header('Content-Type: application/json');
 
-if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['success' => false, 'message' => 'Not logged in']);
+// Check if user is logged in
+if (!isset($_SESSION['firebase_token']) && !isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Please login to update cart']);
     exit;
 }
 
 $input = json_decode(file_get_contents('php://input'), true);
-$cart_item_id = $input['cart_item_id'];
-$change = $input['change'];
 
-// Get current quantity
-$stmt = $conn->prepare("SELECT quantity FROM cartitems WHERE cart_item_id = ?");
-$stmt->bind_param("i", $cart_item_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows === 0) {
-    echo json_encode(['success' => false, 'message' => 'Item not found']);
+if (!isset($input['cart_item_id']) || !isset($input['quantity'])) {
+    echo json_encode(['success' => false, 'message' => 'Cart item ID and quantity are required']);
     exit;
 }
 
-$current_quantity = $result->fetch_assoc()['quantity'];
-$new_quantity = $current_quantity + $change;
+$cartItemId = $input['cart_item_id'];
+$quantity = (int)$input['quantity'];
 
-if ($new_quantity <= 0) {
-    // Remove item if quantity becomes 0 or less
-    $delete_stmt = $conn->prepare("DELETE FROM cartitems WHERE cart_item_id = ?");
-    $delete_stmt->bind_param("i", $cart_item_id);
-    $success = $delete_stmt->execute();
-} else {
-    // Update quantity
-    $update_stmt = $conn->prepare("UPDATE cartitems SET quantity = ? WHERE cart_item_id = ?");
-    $update_stmt->bind_param("ii", $new_quantity, $cart_item_id);
-    $success = $update_stmt->execute();
+if ($quantity < 0) {
+    echo json_encode(['success' => false, 'message' => 'Invalid quantity']);
+    exit;
 }
 
-echo json_encode(['success' => $success]);
+try {
+    // Initialize Firebase API
+    $firebaseAPI = new FirebaseAPI();
+    
+    if (isset($_SESSION['firebase_token'])) {
+        $firebaseAPI->setAuthToken($_SESSION['firebase_token']);
+    }
+    
+    if ($quantity == 0) {
+        // Remove item if quantity is 0
+        $result = $firebaseAPI->removeFromCart($cartItemId);
+    } else {
+        // Update quantity
+        $result = $firebaseAPI->updateCartItem($cartItemId, $quantity);
+    }
+    
+    if ($result && isset($result['success']) && $result['success']) {
+        echo json_encode([
+            'success' => true, 
+            'message' => $quantity == 0 ? 'Item removed from cart' : 'Cart updated successfully',
+            'quantity' => $quantity
+        ]);
+    } else {
+        echo json_encode([
+            'success' => false, 
+            'message' => $result['error'] ?? 'Failed to update cart'
+        ]);
+    }
+    
+} catch (Exception $e) {
+    error_log('Update cart error: ' . $e->getMessage());
+    echo json_encode([
+        'success' => false, 
+        'message' => 'An error occurred while updating cart'
+    ]);
+}
 ?>
