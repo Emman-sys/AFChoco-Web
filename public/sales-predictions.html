@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Predictions - AFChoco Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .stat-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #333;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .chart-title {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        canvas {
+            max-height: 400px;
+        }
+
+        .predictions-table {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .confidence-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .confidence-high {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .confidence-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .confidence-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .timestamp {
+            color: #999;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔮 Sales Predictions Dashboard</h1>
+            <p class="subtitle">AI-powered 30-day sales forecast using Random Forest Machine Learning</p>
+            
+            <div class="controls">
+                <button class="btn-primary" onclick="generatePredictions()">
+                    🚀 Generate New Predictions
+                </button>
+                <button class="btn-secondary" onclick="loadCachedPredictions()">
+                    📊 Load Cached Predictions
+                </button>
+                <button class="btn-secondary" onclick="downloadPredictions()">
+                    💾 Download Data
+                </button>
+            </div>
+
+            <div class="timestamp" id="timestamp"></div>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Generating predictions using Random Forest model...</p>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="success" class="success" style="display: none;"></div>
+
+        <div id="content" style="display: none;">
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">Total Predicted Revenue (30 days)</div>
+                    <div class="stat-value" id="totalRevenue">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-label">Average Daily Revenue</div>
+                    <div class="stat-value" id="avgRevenue">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">Best Sales Day</div>
+                    <div class="stat-value" id="bestDay">-</div>
+                    <div class="stat-label" id="bestDayAmount" style="margin-top: 5px;">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-label">Weekend Premium</div>
+                    <div class="stat-value" id="weekendPremium">-</div>
+                </div>
+            </div>
+
+            <!-- Revenue Chart -->
+            <div class="chart-container">
+                <h2 class="chart-title">📈 30-Day Revenue Forecast</h2>
+                <canvas id="revenueChart"></canvas>
+            </div>
+
+            <!-- Orders Chart -->
+            <div class="chart-container">
+                <h2 class="chart-title">📦 Daily Order Predictions</h2>
+                <canvas id="ordersChart"></canvas>
+            </div>
+
+            <!-- Predictions Table -->
+            <div class="predictions-table">
+                <h2 class="chart-title">📋 Detailed Predictions</h2>
+                <table id="predictionsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Day</th>
+                            <th>Predicted Revenue</th>
+                            <th>Predicted Orders</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let revenueChart = null;
+        let ordersChart = null;
+        let currentPredictions = null;
+
+        // Show/hide loading
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            const successDiv = document.getElementById('success');
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            setTimeout(() => {
+                successDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // Generate new predictions
+        async function generatePredictions() {
+            showLoading(true);
+            document.getElementById('content').style.display = 'none';
+
+            try {
+                const response = await fetch('http://localhost:3000/api/predictions/sales/30days');
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPredictions = data;
+                    displayPredictions(data);
+                    showSuccess('✅ Predictions generated successfully!');
+                } else {
+                    showError('❌ ' + (data.error || 'Failed to generate predictions'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('❌ Network error: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load cached predictions
+        async function loadCachedPredictions() {
+            showLoading(true);
+
+            try {
+                const response = await fetch('http://localhost:3000/api/predictions/sales/cached');
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPredictions = data;
+                    displayPredictions(data);
+                    showSuccess('📊 Loaded cached predictions');
+                } else {
+                    showError('❌ ' + (data.message || 'No cached predictions found'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('❌ Network error: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Display predictions
+        function displayPredictions(data) {
+            document.getElementById('content').style.display = 'block';
+
+            // Update timestamp
+            document.getElementById('timestamp').textContent = `Generated: ${data.generated_at}`;
+
+            // Update stats
+            const insights = data.insights;
+            document.getElementById('totalRevenue').textContent = `₱${insights.total_predicted_revenue.toLocaleString()}`;
+            document.getElementById('avgRevenue').textContent = `₱${insights.average_daily_revenue.toLocaleString()}`;
+            document.getElementById('bestDay').textContent = insights.best_sales_day.date;
+            document.getElementById('bestDayAmount').textContent = `₱${insights.best_sales_day.revenue.toLocaleString()}`;
+            document.getElementById('weekendPremium').textContent = `${insights.weekend_vs_weekday.weekend_premium}%`;
+
+            // Update charts
+            updateCharts(data.predictions);
+
+            // Update table
+            updateTable(data.predictions);
+        }
+
+        // Update charts
+        function updateCharts(predictions) {
+            const dates = predictions.map(p => p.date);
+            const revenues = predictions.map(p => p.predicted_revenue);
+            const orders = predictions.map(p => p.predicted_orders);
+
+            // Revenue chart
+            const revenueCtx = document.getElementById('revenueChart');
+            if (revenueChart) revenueChart.destroy();
+            
+            revenueChart = new Chart(revenueCtx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Predicted Revenue (₱)',
+                        data: revenues,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '₱' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Orders chart
+            const ordersCtx = document.getElementById('ordersChart');
+            if (ordersChart) ordersChart.destroy();
+            
+            ordersChart = new Chart(ordersCtx, {
+                type: 'bar',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Predicted Orders',
+                        data: orders,
+                        backgroundColor: 'rgba(118, 75, 162, 0.8)',
+                        borderColor: '#764ba2',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update table
+        function updateTable(predictions) {
+            const tbody = document.querySelector('#predictionsTable tbody');
+            tbody.innerHTML = '';
+
+            predictions.forEach(pred => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${pred.date}</td>
+                    <td>${pred.day_name}</td>
+                    <td>₱${pred.predicted_revenue.toLocaleString()}</td>
+                    <td>${pred.predicted_orders}</td>
+                    <td><span class="confidence-badge confidence-${pred.confidence}">${pred.confidence.toUpperCase()}</span></td>
+                `;
+            });
+        }
+
+        // Download predictions
+        function downloadPredictions() {
+            if (!currentPredictions) {
+                showError('No predictions to download. Generate predictions first.');
+                return;
+            }
+
+            const dataStr = JSON.stringify(currentPredictions, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `sales_predictions_${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            showSuccess('💾 Downloaded predictions!');
+        }
+
+        // Load cached predictions on page load
+        window.addEventListener('load', () => {
+            loadCachedPredictions();
+        });
+    </script>
+</body>
+</html>

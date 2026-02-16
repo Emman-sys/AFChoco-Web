@@ -14,23 +14,13 @@ $user_id = $_SESSION['user_id'] ?? '';
 // Get user information from session (already set during login)
 $user_info = [
     'name' => $_SESSION['user_name'] ?? 'User',
-    'email' => $_SESSION['user_email'] ?? '',
-    'phone' => '',
-    'address' => ''
+    'email' => $_SESSION['user_email'] ?? ''
 ];
 
 // Initialize Firebase API
 $firebaseAPI = new FirebaseAPI();
 if (isset($_SESSION['firebase_token'])) {
     $firebaseAPI->setAuthToken($_SESSION['firebase_token']);
-    
-    // Fetch full user profile from Firebase to get phone and address
-    $profileResponse = $firebaseAPI->getProfile();
-    if ($profileResponse && isset($profileResponse['success']) && $profileResponse['success']) {
-        $profileData = $profileResponse['user'];
-        $user_info['phone'] = $profileData['phoneNumber'] ?? '';
-        $user_info['address'] = $profileData['address'] ?? '';
-    }
 }
 
 // Get cart items from Firebase
@@ -961,7 +951,7 @@ $grand_total = $total + $delivery_fee;
                         placeholder="Enter your complete delivery address or use map below"
                         rows="3"
                         style="resize: vertical; min-height: 60px; line-height: 1.4;"
-                        required><?php echo htmlspecialchars($user_info['address']); ?></textarea>
+                        required></textarea>
               
               <!-- Free Map Integration using Leaflet + OpenStreetMap -->
               <div class="map-container">
@@ -983,8 +973,7 @@ $grand_total = $total + $delivery_fee;
             <div class="payment-section">
               <div class="payment-label">📱 Contact Number:</div>
               <input type="tel" class="payment-input" id="customer-phone"
-                     placeholder="09XXXXXXXXX" pattern="[0-9]{11}" 
-                     value="<?php echo htmlspecialchars($user_info['phone']); ?>" required>
+                     placeholder="09XXXXXXXXX" pattern="[0-9]{11}" required>
             </div>
             
             <!-- Payment Method Selection -->
@@ -1759,7 +1748,7 @@ $grand_total = $total + $delivery_fee;
       
       // Navigate to user profile page
       function goToProfile() {
-        window.location.href = 'Userdashboard.php';
+        window.location.href = 'UserDashboard.php';
       }
       
       // Enhanced DOM Ready Event Handler
@@ -1835,13 +1824,12 @@ $grand_total = $total + $delivery_fee;
     <script>
       // Initialize Firebase
       const firebaseConfig = {
-        apiKey: "AIzaSyCJPY70uT6qNqs2J2GW3zWAAKeQ_rQ1tUk",
+        apiKey: "AIzaSyBDjLdUULgF3Dc4ijvDWC4hR8lE2FjfwN0",
         authDomain: "anf-chocolate.firebaseapp.com",
         projectId: "anf-chocolate",
         storageBucket: "anf-chocolate.firebasestorage.app",
-        messagingSenderId: "899676195175",
-        appId: "1:899676195175:web:0c38236d38cb4103cc47c2",
-        measurementId: "G-FGSY080FNM"
+        messagingSenderId: "655675394049",
+        appId: "1:655675394049:web:88e1819f8fd7db52a8a10c"
       };
       
       firebase.initializeApp(firebaseConfig);
@@ -1880,13 +1868,8 @@ $grand_total = $total + $delivery_fee;
             console.error('Token refresh error:', error);
           }
         } else {
-          // Only redirect if PHP session also doesn't exist
-          <?php if (!isset($_SESSION['user_id'])): ?>
-            console.log('No user authenticated, redirecting...');
-            window.location.href = 'Welcome.php';
-          <?php else: ?>
-            console.log('PHP session exists but Firebase client not logged in - this is expected after page reload');
-          <?php endif; ?>
+          console.log('No user authenticated, redirecting...');
+          window.location.href = 'Welcome.php';
         }
       });
     </script>

@@ -11,6 +11,7 @@ import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
 import categoryRoutes from './routes/categories.js';
 import commentRoutes from './routes/comments.js';
+import predictionsRoutes from './routes/predictions.js';
 
 dotenv.config();
 
@@ -36,10 +37,9 @@ app.use(session({
   }
 }));
 
-// Root route - Redirect to Welcome page (PHP landing page)
+// Root route - Show main shop page
 app.get('/', (req, res) => {
-  // Check if request is from PHP server (port 8000) or direct browser
-  res.redirect('/Welcome.php');
+  res.redirect('/main.html');
 });
 
 // Serve static files
@@ -56,11 +56,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/comments', commentRoutes);
-
-// Root route - Redirect to main page
-app.get('/', (req, res) => {
-  res.redirect('/main.html');
-});
+app.use('/api/predictions', predictionsRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {

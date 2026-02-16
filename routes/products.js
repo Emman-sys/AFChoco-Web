@@ -2,7 +2,7 @@
 import express from 'express';
 import admin from '../config/firebase-admin.js';
 import { adminDb, adminStorage } from '../config/firebase-admin.js';
-import { verifyToken, verifyAdmin } from './auth.js';
+import { verifyToken, verifyAdmin, optionalAuth } from './auth.js';
 
 const router = express.Router();
 
@@ -78,7 +78,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create new product (Admin only)
-router.post('/', verifyToken, verifyAdmin, async (req, res) => {
+router.post('/', optionalAuth, verifyAdmin, async (req, res) => {
   try {
     const { name, description, price, category, sku, stockLevel, imageUrl } = req.body;
     
@@ -126,7 +126,7 @@ router.post('/', verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // Update product (Admin only)
-router.put('/:id', verifyToken, verifyAdmin, async (req, res) => {
+router.put('/:id', optionalAuth, verifyAdmin, async (req, res) => {
   try {
     const { name, description, price, category, sku, stockLevel, imageUrl } = req.body;
     
@@ -156,7 +156,7 @@ router.put('/:id', verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // Delete product (Admin only)
-router.delete('/:id', verifyToken, verifyAdmin, async (req, res) => {
+router.delete('/:id', optionalAuth, verifyAdmin, async (req, res) => {
   try {
     await adminDb.collection('products').doc(req.params.id).delete();
     

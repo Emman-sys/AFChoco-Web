@@ -264,89 +264,58 @@ function ensureConnection($conn) {
 
 // Handle product editing
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_product']) && isset($_SESSION['admin_id'])) {
-    error_log("🔥 EDIT PRODUCT ATTEMPT - ID: " . $_POST['product_id']);
+    error_log("🔥 EDIT PRODUCT ATTEMPT - Firestore Backend - ID: " . $_POST['product_id']);
     
-    $product_id = intval($_POST['product_id']);
+    $product_id = trim($_POST['product_id']); // Keep as string for Firestore document ID
     $name = trim($_POST['product_name']);
     $description = trim($_POST['product_description']);
     $price = floatval($_POST['product_price']);
     $stock = intval($_POST['product_stock']);
-    $category_id = intval($_POST['category_id']);
+    $category = $_POST['category_name'] ?? 'SPECIALTY'; // Use category name not ID
     
     // Validate inputs
-    if (empty($name) || empty($description) || $price <= 0 || $stock < 0 || $product_id <= 0) {
+    if (empty($product_id) || empty($name) || empty($description) || $price <= 0 || $stock < 0) {
         $_SESSION['product_error'] = "Please fill all fields with valid data.";
+        error_log("❌ Validation failed");
     } else {
         try {
-            // Ensure database connection is alive
-            $conn = ensureConnection($conn);
-            
-            // Check if new image was uploaded
-            $updateImage = false;
-            $imageData = null;
+            // For now, use placeholder for image URL if new image uploaded
+            // Firebase Storage integration can be added later
+            $imageUrl = null;
             
             if (isset($_FILES['product_image']) && $_FILES['product_image']['error'] === UPLOAD_ERR_OK) {
                 error_log("📸 New image upload for edit: " . $_FILES['product_image']['name']);
-                $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-                $fileType = $_FILES['product_image']['type'];
-                
-                if (in_array($fileType, $allowedTypes) && $_FILES['product_image']['size'] <= 5000000) {
-                    // Compress and resize image
-                    $imageData = compressImage($_FILES['product_image']['tmp_name'], $fileType);
-                    if ($imageData === false) {
-                        $_SESSION['product_error'] = "Image too large after compression. Please use a smaller image.";
-                        header('Location: AdminDashboard.php?product_edit_error=1&show_modal=1');
-                        exit();
-                    }
-                    $updateImage = true;
-                    error_log("✅ New image processed and compressed: " . strlen($imageData) . " bytes");
-                } else {
-                    $_SESSION['product_error'] = "Invalid image file. Please use JPG, PNG, or GIF format under 5MB.";
-                    header('Location: AdminDashboard.php?product_edit_error=1&show_modal=1');
-                    exit();
-                }
+                $imageUrl = 'https://via.placeholder.com/400x300?text=' . urlencode($name);
             }
             
-            // Update product in database - with connection check
-            if ($updateImage) {
-                // Update with new image
-                $stmt = $conn->prepare("UPDATE products SET name = ?, description = ?, price = ?, stock_quantity = ?, category_id = ?, product_image = ?, image_type = NULL WHERE product_id = ?");
-                if (!$stmt) {
-                    error_log("❌ Prepare failed: " . $conn->error);
-                    $_SESSION['product_error'] = "Database prepare error: " . $conn->error;
-                    header('Location: AdminDashboard.php?product_edit_error=1&show_modal=1');
-                    exit();
-                }
-                
-                $stmt->bind_param("ssdiisi", $name, $description, $price, $stock, $category_id, $imageData, $product_id);
-                error_log("🔄 Updating product WITH new image: " . strlen($imageData) . " bytes");
+            // Create update data following Firestore schema
+            $updateData = [
+                'name' => $name,
+                'description' => $description,
+                'price' => $price,
+                'stockLevel' => $stock,
+                'category' => strtoupper($category)
+            ];
+            
+            // Only include imageUrl if new image uploaded
+            if ($imageUrl !== null) {
+                $updateData['imageUrl'] = $imageUrl;
+            }
+            
+            error_log("🔄 Updating product in Firestore: " . json_encode($updateData));
+            
+            $result = $firebaseAPI->updateProduct($product_id, $updateData);
+            
+            if ($result['success'] ?? false) {
+                $_SESSION['product_success'] = "Product updated successfully in Firestore!";
+                error_log("✅ Product updated in Firestore");
             } else {
-                // Update without changing image
-                $stmt = $conn->prepare("UPDATE products SET name = ?, description = ?, price = ?, stock_quantity = ?, category_id = ? WHERE product_id = ?");
-                if (!$stmt) {
-                    error_log("❌ Prepare failed: " . $conn->error);
-                    $_SESSION['product_error'] = "Database prepare error: " . $conn->error;
-                    header('Location: AdminDashboard.php?product_edit_error=1&show_modal=1');
-                    exit();
-                }
-                
-                $stmt->bind_param("ssdiii", $name, $description, $price, $stock, $category_id, $product_id);
-                error_log("🔄 Updating product WITHOUT changing image");
+                $_SESSION['product_error'] = "Failed to update product: " . ($result['error'] ?? 'Unknown error');
+                error_log("❌ Firestore error: " . ($result['error'] ?? 'Unknown'));
             }
-            
-            if ($stmt->execute()) {
-                $_SESSION['product_success'] = "Product updated successfully!" . ($updateImage ? " Image updated." : " Image kept.");
-                error_log("✅ Product updated successfully");
-            } else {
-                $_SESSION['product_error'] = "Failed to update product: " . $stmt->error;
-                error_log("❌ Update failed: " . $stmt->error);
-            }
-            
-            $stmt->close();
-            
         } catch (Exception $e) {
             $_SESSION['product_error'] = "Error updating product: " . $e->getMessage();
-            error_log("❌ Update exception: " . $e->getMessage());
+            error_log("❌ Exception: " . $e->getMessage());
         }
     }
     
@@ -1665,7 +1634,7 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
     <!-- Admin Login Modal - Matching Welcome.php Style -->
     <div id="adminLoginPopup" class="popup-overlay">
         <div class="popup-container">
-            <button class="popup-close" onclick="window.location.href='MainPage.php'">&times;</button>
+            <button class="popup-close" onclick="window.location.href='/MainPage.php'">&times;</button>
             <h2 class="form-title">Admin Login</h2>
             
             <?php if (isset($loginError)): ?>
@@ -1686,7 +1655,7 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                 </div>
                 <button type="submit" name="admin_login" class="login-button">Login to Dashboard</button>
                 <p class="signup-text">
-                    <a href="MainPage.php">← Back to Store</a>
+                    <a href="../MainPage.php">← Back to Store</a>
                 </p>
                 <div style="margin-top: 15px; font-size: 12px; color: #ccc; text-align: center;">
                     Available accounts:<br>
@@ -1846,7 +1815,8 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                 <!-- Rectangle2 now contains Chart.js chart -->
                 <div class="rectangle2">
                     <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 25px; box-sizing: border-box;">
-                        <h3 style="color: white; text-align: center; margin-bottom: 25px; font-size: 18px; margin-top: 0;">📊 Sales Chart 2025 📊</h3>
+                        <h3 style="color: white; text-align: center; margin-bottom: 25px; font-size: 18px; margin-top: 0;">📊 Projected Sales 30 Days 📊</h3>
+                        <div id="predictionStatus" style="color: white; text-align: center; margin-bottom: 10px; font-size: 12px;">Loading predictions...</div>
                         <div style="position: relative; width: 98%; max-width: 1100px; height: 300px; background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">
                             <canvas id="salesChart" style="width: 100% !important; height: 100% !important; max-width: 100%; max-height: 100%;"></canvas>
                         </div>
@@ -1900,7 +1870,7 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                         <td><span style="color: #999; font-size: 12px;"><?php echo $product['sales_count'] ?? 0; ?> sold</span></td>
                         <td>
                             <div class="table-actions">
-                                <button class="btn-edit" onclick="editProductById(<?php echo $product['product_id']; ?>)">Edit</button>
+                                <button class="btn-edit" onclick="editProductById('<?php echo $product['product_id']; ?>')">Edit</button>
                                 <form method="POST" style="display: inline;">
                                     <input type="hidden" name="product_id" value="<?php echo $product['product_id']; ?>">
                                     <button type="submit" name="delete_product" class="btn-delete" 
@@ -2111,15 +2081,15 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
         // Store product data globally
         const productDataMap = new Map();
         <?php foreach ($allProducts as $product): ?>
-        productDataMap.set(<?php echo $product['product_id']; ?>, {
-            product_id: <?php echo $product['product_id']; ?>,
+        productDataMap.set('<?php echo $product['product_id']; ?>', {
+            product_id: '<?php echo $product['product_id']; ?>',
             name: <?php echo json_encode($product['name']); ?>,
             description: <?php echo json_encode($product['description']); ?>,
             price: <?php echo $product['price']; ?>,
             stock_quantity: <?php echo $product['stock_quantity']; ?>,
-            category_id: <?php echo $product['category_id']; ?>,
-            has_image: <?php echo $product['product_image'] ? 'true' : 'false'; ?>,
-            image_type: <?php echo json_encode($product['image_type']); ?>
+            category: '<?php echo $product['category_id']; ?>',
+            has_image: <?php echo !empty($product['image_url']) ? 'true' : 'false'; ?>,
+            image_url: <?php echo json_encode($product['image_url']); ?>
         });
         <?php endforeach; ?>
 
@@ -2149,7 +2119,7 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
             document.getElementById('product_description').value = product.description;
             document.getElementById('product_price').value = product.price.toFixed(2);
             document.getElementById('product_stock').value = product.stock_quantity;
-            document.getElementById('category_id').value = product.category_id;
+            document.getElementById('category_name').value = product.category;
             
             // Handle current image display
             const currentImg = document.getElementById('currentImage');
@@ -2184,27 +2154,74 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
             console.log('✅ Edit modal opened successfully');
         }
 
-        // Simple chart creation function
-        function createChart() {
+        // Chart creation function with 30-day predictions
+        async function createChart() {
+            const perfStart = performance.now();
+            console.log('📊 createChart called at', new Date().toTimeString());
             const ctx = document.getElementById('salesChart');
+            const statusDiv = document.getElementById('predictionStatus');
+            
             if (!ctx) {
-                console.log('❌ No canvas found');
+                console.error('❌ No canvas found');
+                if (statusDiv) statusDiv.textContent = '⚠️ Chart canvas not found';
                 return;
             }
 
-            const salesData = <?php echo json_encode($monthlySalesData); ?>;
-            const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            
-            console.log('📊 Creating chart with data:', salesData);
+            if (typeof Chart === 'undefined') {
+                console.error('❌ Chart.js not loaded');
+                if (statusDiv) statusDiv.innerHTML = '⚠️ Chart.js library not loaded. <a href="#" onclick="location.reload(); return false;">Reload page</a>';
+                return;
+            }
 
             try {
+                // Fetch predictions from API
+                const apiUrl = 'http://localhost:3000/api/predictions/sales/cached';
+                const fetchStart = performance.now();
+                console.log('🔄 Starting fetch at +' + (fetchStart - perfStart).toFixed(0) + 'ms');
+                statusDiv.textContent = 'Fetching predictions...';
+                
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                const fetchEnd = performance.now();
+                console.log('📡 Fetch complete in ' + (fetchEnd - fetchStart).toFixed(0) + 'ms, status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const parseStart = performance.now();
+                const data = await response.json();
+                const parseEnd = performance.now();
+                console.log('📦 Parse complete in ' + (parseEnd - parseStart).toFixed(0) + 'ms, predictions:', data.predictions?.length);
+                
+                if (!data.success) {
+                    throw new Error('API returned success: false');
+                }
+
+                const predictions = data.predictions;
+                const dates = predictions.map(p => {
+                    const date = new Date(p.date);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                const revenues = predictions.map(p => p.predicted_revenue);
+                
+                // Update status with insights
+                const totalRevenue = data.insights.total_predicted_revenue;
+                statusDiv.innerHTML = `AI-powered forecast • Total: ₱${totalRevenue.toLocaleString()} • Generated: ${data.generated_at}`;
+                
+                console.log('📊 Creating chart...');
+                const chartStart = performance.now();
+
                 new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: monthLabels,
+                        labels: dates,
                         datasets: [{
-                            label: 'Monthly Sales (₱)',
-                            data: salesData,
+                            label: 'Predicted Revenue (₱)',
+                            data: revenues,
                             borderColor: '#FFD700',
                             backgroundColor: 'rgba(255, 215, 0, 0.1)',
                             borderWidth: 3,
@@ -2213,8 +2230,8 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                             pointBackgroundColor: '#FFD700',
                             pointBorderColor: '#FFF',
                             pointBorderWidth: 2,
-                            pointRadius: 5,
-                            pointHoverRadius: 8
+                            pointRadius: 3,
+                            pointHoverRadius: 6
                         }]
                     },
                     options: {
@@ -2229,7 +2246,20 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                                 titleColor: 'white',
                                 bodyColor: 'white',
                                 borderColor: '#FFD700',
-                                borderWidth: 1
+                                borderWidth: 1,
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Revenue: ₱' + context.parsed.y.toLocaleString();
+                                    },
+                                    afterLabel: function(context) {
+                                        const pred = predictions[context.dataIndex];
+                                        return [
+                                            `Day: ${pred.day_name}`,
+                                            `Orders: ${pred.predicted_orders}`,
+                                            `Confidence: ${pred.confidence.toUpperCase()}`
+                                        ];
+                                    }
+                                }
                             }
                         },
                         scales: {
@@ -2238,19 +2268,69 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                                 grid: { color: 'rgba(255, 255, 255, 0.2)' },
                                 ticks: { 
                                     color: 'white',
-                                    callback: function(value) { return '₱' + value; }
+                                    callback: function(value) { return '₱' + value.toLocaleString(); }
                                 }
                             },
                             x: {
                                 grid: { color: 'rgba(255, 255, 255, 0.2)' },
-                                ticks: { color: 'white' }
+                                ticks: { 
+                                    color: 'white',
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
                             }
                         }
                     }
                 });
-                console.log('✅ Chart created successfully!');
+                
+                const chartEnd = performance.now();
+                const totalTime = chartEnd - perfStart;
+                console.log('✅ Chart created in ' + (chartEnd - chartStart).toFixed(0) + 'ms');
+                console.log('✅ TOTAL TIME: ' + totalTime.toFixed(0) + 'ms');
+                console.log('   - Fetch: ' + (fetchEnd - fetchStart).toFixed(0) + 'ms');
+                console.log('   - Parse: ' + (parseEnd - parseStart).toFixed(0) + 'ms');
+                console.log('   - Chart: ' + (chartEnd - chartStart).toFixed(0) + 'ms');
             } catch (error) {
                 console.error('❌ Chart error:', error);
+                console.error('Error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name,
+                    type: error.constructor.name
+                });
+                
+                if (statusDiv) {
+                    let errorMsg = '';
+                    
+                    // Network/CORS errors
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        errorMsg = '⚠️ Network Error: Cannot connect to API server.<br>' +
+                                   '<small>• Check if Node server is running: <code>lsof -i :3000</code><br>' +
+                                   '• Check browser console for CORS errors<br>' +
+                                   '• Try accessing API directly: <a href="http://localhost:3000/api/health" target="_blank">http://localhost:3000/api/health</a></small>';
+                    } 
+                    // HTTP errors
+                    else if (error.message.includes('HTTP')) {
+                        errorMsg = `⚠️ Server Error: ${error.message}<br>` +
+                                   '<small>API endpoint returned an error response</small>';
+                    }
+                    // Chart.js errors
+                    else if (error.message.includes('Chart')) {
+                        errorMsg = '⚠️ Chart.js Error: Failed to render chart<br>' +
+                                   '<small>Chart library may not be loaded correctly</small>';
+                    }
+                    // Generic errors
+                    else {
+                        errorMsg = `⚠️ Error: ${error.message}<br>` +
+                                   '<small>Check browser console for details</small>';
+                    }
+                    
+                    statusDiv.innerHTML = errorMsg + 
+                        '<br><button onclick="createChart(); return false;" style="margin-top: 10px; padding: 5px 15px; background: #FFD700; color: #000; border: none; border-radius: 5px; cursor: pointer;">🔄 Retry</button>';
+                    statusDiv.style.color = '#ffcccc';
+                    statusDiv.style.fontSize = '11px';
+                    statusDiv.style.lineHeight = '1.4';
+                }
             }
         }
 
@@ -2318,8 +2398,18 @@ $stockDepletion = getStockDepletionForecast($firebaseAPI);
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
             
-            // Create chart
-            setTimeout(createChart, 300);
+            // Create chart - wait for Chart.js to load (faster, no health check)
+            function initChart() {
+                if (typeof Chart !== 'undefined') {
+                    console.log('✅ Chart.js loaded, creating chart immediately...');
+                    createChart();
+                } else {
+                    console.log('⏳ Waiting for Chart.js...');
+                    setTimeout(initChart, 50);
+                }
+            }
+            // Start immediately on DOMContentLoaded (already fired)
+            initChart();
             
             // Add form submission logging
             const productForm = document.getElementById('productForm');

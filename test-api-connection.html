@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        code {
+            background: #f8f9fa;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🔍 API Connection Diagnostic</h1>
+        <p>This page helps diagnose connectivity issues between your browser and the Node.js API server.</p>
+
+        <div class="test-section">
+            <h3>Environment Info</h3>
+            <div id="envInfo"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 1: Health Check</h3>
+            <button onclick="testHealth()">Test /api/health</button>
+            <div id="healthResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 2: Predictions API</h3>
+            <button onclick="testPredictions()">Test /api/predictions/sales/cached</button>
+            <div id="predictionsResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 3: Direct Fetch (CORS Test)</h3>
+            <button onclick="testDirectFetch()">Test Direct Fetch with CORS</button>
+            <div id="fetchResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Troubleshooting Steps</h3>
+            <ol>
+                <li>Check if Node server is running: <code>lsof -i :3000</code></li>
+                <li>Verify the API works: <code>curl http://localhost:3000/api/health</code></li>
+                <li>Check browser console (F12) for CORS errors</li>
+                <li>Ensure you're accessing via <code>http://localhost:8000</code></li>
+                <li>Try disabling browser extensions that might block requests</li>
+                <li>Check if your firewall is blocking localhost connections</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // Display environment info
+        document.getElementById('envInfo').innerHTML = `
+            <div class="status info">
+                <strong>Page Origin:</strong> ${window.location.origin}<br>
+                <strong>Page URL:</strong> ${window.location.href}<br>
+                <strong>User Agent:</strong> ${navigator.userAgent}<br>
+                <strong>Test Time:</strong> ${new Date().toLocaleString()}
+            </div>
+        `;
+
+        async function testHealth() {
+            const resultDiv = document.getElementById('healthResult');
+            resultDiv.innerHTML = '<div class="status info">Testing...</div>';
+            
+            try {
+                const startTime = performance.now();
+                const response = await fetch('http://localhost:3000/api/health', {
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+                const endTime = performance.now();
+                
+                const data = await response.json();
+                const responseTime = (endTime - startTime).toFixed(2);
+                
+                resultDiv.innerHTML = `
+                    <div class="status success">
+                        ✅ SUCCESS (${responseTime}ms)
+                    </div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                    <p><strong>Response Headers:</strong></p>
+                    <pre>${[...response.headers.entries()].map(([k, v]) => `${k}: ${v}`).join('\n')}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ FAILED
+                    </div>
+                    <pre>Error: ${error.name}
+Message: ${error.message}
+Stack: ${error.stack}</pre>
+                    <p><strong>Possible Causes:</strong></p>
+                    <ul>
+                        <li>Node server not running on port 3000</li>
+                        <li>CORS policy blocking the request</li>
+                        <li>Network/firewall blocking localhost connections</li>
+                    </ul>
+                `;
+            }
+        }
+
+        async function testPredictions() {
+            const resultDiv = document.getElementById('predictionsResult');
+            resultDiv.innerHTML = '<div class="status info">Testing...</div>';
+            
+            try {
+                const startTime = performance.now();
+                const response = await fetch('http://localhost:3000/api/predictions/sales/cached', {
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+                const endTime = performance.now();
+                
+                const data = await response.json();
+                const responseTime = (endTime - startTime).toFixed(2);
+                
+                resultDiv.innerHTML = `
+                    <div class="status success">
+                        ✅ SUCCESS (${responseTime}ms)
+                    </div>
+                    <p><strong>Data Summary:</strong></p>
+                    <pre>Success: ${data.success}
+Cached: ${data.cached}
+Generated: ${data.generated_at}
+Predictions: ${data.predictions?.length} days
+Total Revenue: ₱${data.insights?.total_predicted_revenue?.toLocaleString()}</pre>
+                    <details>
+                        <summary>View Full Response</summary>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </details>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ FAILED
+                    </div>
+                    <pre>Error: ${error.name}
+Message: ${error.message}</pre>
+                    <p><strong>Possible Causes:</strong></p>
+                    <ul>
+                        <li>Predictions file not generated yet</li>
+                        <li>Node server not running</li>
+                        <li>Route not properly configured</li>
+                    </ul>
+                `;
+            }
+        }
+
+        async function testDirectFetch() {
+            const resultDiv = document.getElementById('fetchResult');
+            resultDiv.innerHTML = '<div class="status info">Testing with detailed logging...</div>';
+            
+            console.group('🔍 Direct Fetch Test');
+            console.log('Origin:', window.location.origin);
+            console.log('Target:', 'http://localhost:3000/api/health');
+            
+            try {
+                console.log('Sending fetch request...');
+                const response = await fetch('http://localhost:3000/api/health', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+                
+                console.log('Response received:', response.status, response.statusText);
+                console.log('Headers:', [...response.headers.entries()]);
+                
+                const data = await response.json();
+                console.log('Data:', data);
+                console.groupEnd();
+                
+                resultDiv.innerHTML = `
+                    <div class="status success">
+                        ✅ Direct fetch successful! Check browser console for details.
+                    </div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('Fetch error:', error);
+                console.groupEnd();
+                
+                resultDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ Direct fetch failed! Check browser console for details.
+                    </div>
+                    <pre>Error Type: ${error.constructor.name}
+Error Name: ${error.name}
+Error Message: ${error.message}</pre>
+                    <p><strong>Additional Info:</strong></p>
+                    <p>Check the browser console (F12) for detailed error information, including any CORS errors.</p>
+                `;
+            }
+        }
+
+        // Auto-run health check on page load
+        window.addEventListener('load', () => {
+            setTimeout(testHealth, 500);
+        });
+    </script>
+</body>
+</html>

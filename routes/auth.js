@@ -25,6 +25,36 @@ export const verifyToken = async (req, res, next) => {
   }
 };
 
+// Optional authentication - allows anonymous admin access from localhost
+export const optionalAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  // If no token provided, check if request is from localhost (PHP admin dashboard)
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Allow anonymous admin access for localhost requests
+    const isLocalhost = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+    
+    if (isLocalhost || req.hostname === 'localhost') {
+      console.log('🔓 Anonymous admin access allowed from localhost');
+      req.user = { uid: 'admin-localhost', role: 'admin', anonymous: true };
+      return next();
+    }
+    
+    return res.status(401).json({ error: 'Unauthorized - No token provided' });
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
+
+  try {
+    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    console.error('Token verification error:', error);
+    return res.status(401).json({ error: 'Unauthorized - Invalid token' });
+  }
+};
+
 // Sign up new user
 router.post('/signup', async (req, res) => {
   try {
@@ -135,6 +165,12 @@ router.put('/profile', verifyToken, async (req, res) => {
 // Verify admin role
 export const verifyAdmin = async (req, res, next) => {
   try {
+    // Allow anonymous admin access from localhost
+    if (req.user.anonymous && req.user.role === 'admin') {
+      console.log('✅ Anonymous admin access granted');
+      return next();
+    }
+    
     const userId = req.user.uid;
     const userDoc = await adminDb.collection('users').doc(userId).get();
     

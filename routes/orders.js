@@ -2,7 +2,7 @@
 import express from 'express';
 import admin from '../config/firebase-admin.js';
 import { adminDb } from '../config/firebase-admin.js';
-import { verifyToken, verifyAdmin } from './auth.js';
+import { verifyToken, verifyAdmin, optionalAuth } from './auth.js';
 
 const router = express.Router();
 
@@ -140,7 +140,7 @@ router.get('/:orderId', verifyToken, async (req, res) => {
 });
 
 // Get all orders (Admin only)
-router.get('/admin/all', verifyToken, verifyAdmin, async (req, res) => {
+router.get('/admin/all', optionalAuth, verifyAdmin, async (req, res) => {
   try {
     const { status, limit = 100 } = req.query;
     
@@ -175,7 +175,7 @@ router.get('/admin/all', verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // Update order status (Admin only)
-router.put('/:orderId/status', verifyToken, verifyAdmin, async (req, res) => {
+router.put('/:orderId/status', optionalAuth, verifyAdmin, async (req, res) => {
   try {
     const { orderId } = req.params;
     const { orderStatus } = req.body;
