@@ -1,64 +1,69 @@
 <?php
-// Start session and connect to database for cart functionality
+// Start session and connect to Firebase for cart functionality
 session_start();
-require 'db_connect.php';
+require 'firebase_api.php';
 
 // Security check - redirect to login if user not authenticated
-if (!isset($_SESSION['user_id'])) {
+if (!isset($_SESSION['user_id']) && !isset($_SESSION['user_email'])) {
     header('Location: Welcome.php');
     exit;
 }
 
-$user_id = $_SESSION['user_id'];
+$user_id = $_SESSION['user_id'] ?? '';
 
-// Get user information for pre-filling checkout form
-$user_stmt = $conn->prepare("SELECT name, email FROM users WHERE user_id = ?");
-if (!$user_stmt) {
-    die("Error preparing user query: " . $conn->error);
+// Get user information from session (already set during login)
+$user_info = [
+    'name' => $_SESSION['user_name'] ?? 'User',
+    'email' => $_SESSION['user_email'] ?? ''
+];
+
+// Initialize Firebase API
+$firebaseAPI = new FirebaseAPI();
+if (isset($_SESSION['firebase_token'])) {
+    $firebaseAPI->setAuthToken($_SESSION['firebase_token']);
 }
-$user_stmt->bind_param("i", $user_id);
-$user_stmt->execute();
-$user_info = $user_stmt->get_result()->fetch_assoc();
 
-// Get user's total order count for navigation badge display
-$order_count_stmt = $conn->prepare("SELECT COUNT(*) as order_count FROM orders WHERE user_id = ?");
-$order_count_stmt->bind_param("i", $user_id);
-$order_count_stmt->execute();
-$order_count = $order_count_stmt->get_result()->fetch_assoc()['order_count'];
+// Get cart items from Firebase
+$cartResponse = $firebaseAPI->getCart();
+$cart_items = [];
+$order_count = 0;
 
-// Check if cartitems table exists (graceful handling for new database installations)
-$table_check = $conn->query("SHOW TABLES LIKE 'cartitems'");
-if ($table_check->num_rows == 0) {
-    $cart_items = [];
-} else {
-    // Get cart items with comprehensive stock checking and product details
-    // JOIN multiple tables to get all necessary product information
-    $stmt = $conn->prepare("
-        SELECT ci.cart_item_id, ci.quantity, p.product_id, p.name, p.description, p.price, p.stock_quantity,
-               (ci.quantity * p.price) as subtotal,
-               cat.category_name,
-               CASE WHEN p.product_image IS NOT NULL THEN 1 ELSE 0 END as has_image,
-               CASE 
-                   WHEN p.stock_quantity = 0 THEN 'out_of_stock'
-                   WHEN p.stock_quantity < ci.quantity THEN 'insufficient_stock' 
-                   WHEN p.stock_quantity <= 10 THEN 'low_stock'
-                   ELSE 'in_stock'
-               END as stock_status
-        FROM cartitems ci
-        JOIN cart c ON ci.cart_id = c.cart_id
-        JOIN products p ON ci.product_id = p.product_id
-        JOIN categories cat ON p.category_id = cat.category_id
-        WHERE c.user_id = ?
-        ORDER BY ci.cart_item_id DESC
-    ");
+// Debug: Log the cart response
+error_log('Cart Response: ' . print_r($cartResponse, true));
+
+if ($cartResponse && isset($cartResponse['success']) && $cartResponse['success']) {
+    $cartData = $cartResponse['cart'] ?? [];
+    $cart_items = $cartData['items'] ?? [];
     
-    if (!$stmt) {
-        die("Error preparing cart query: " . $conn->error);
+    // Transform Firebase cart items to match expected format
+    $transformed_items = [];
+    foreach ($cart_items as $index => $item) {
+        $transformed_items[] = [
+            'cart_item_id' => $item['id'] ?? $index,
+            'quantity' => $item['quantity'] ?? 1,
+            'product_id' => $item['productId'] ?? '',
+            'name' => $item['productName'] ?? 'Product',
+            'description' => '', // Not stored in cart, can be fetched separately if needed
+            'price' => $item['productPrice'] ?? 0,
+            'stock_quantity' => 999, // Not stored in cart, assume in stock
+            'subtotal' => ($item['quantity'] ?? 1) * ($item['productPrice'] ?? 0),
+            'category_name' => '', // Not stored in cart
+            'has_image' => !empty($item['productImageUrl']),
+            'product_image_url' => $item['productImageUrl'] ?? '',
+            'stock_status' => 'in_stock' // Default to in stock
+        ];
     }
-    
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $cart_items = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $cart_items = $transformed_items;
+} else {
+    // Debug: Log when cart fetch fails
+    error_log('Cart fetch failed or empty. Response: ' . print_r($cartResponse, true));
+}
+
+// Get order count from Firebase
+$ordersResponse = $firebaseAPI->getMyOrders();
+if ($ordersResponse && isset($ordersResponse['success']) && $ordersResponse['success']) {
+    $orders = $ordersResponse['orders'] ?? [];
+    $order_count = count($orders);
 }
 
 // Calculate cart totals and delivery fee
@@ -83,6 +88,10 @@ $grand_total = $total + $delivery_fee;
    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family+Merriweather+Sans:wght@700&display=swap" rel="stylesheet" />
    <link rel="stylesheet" href="styles.css">
    
+   <!-- Firebase SDK for token refresh -->
+   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+   
    <!-- Free Map Libraries - No API Key Required -->
    <!-- Leaflet: Open-source interactive map library -->
    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -96,7 +105,6 @@ $grand_total = $total + $delivery_fee;
       /* Cart page styling with responsive design and modern UI */
       body {
         background: linear-gradient(135deg, #5127A3, #986C93, #E0B083);
-        background-image: url('bg.png');
         background-position: center;
         background-size: cover;
         background-attachment: fixed;
@@ -818,9 +826,9 @@ $grand_total = $total + $delivery_fee;
                 
                 <!-- Product Image Column -->
                 <div>
-                  <?php if ($item['has_image']): ?>
-                    <!-- Display actual product image from database -->
-                    <img src="display_image.php?id=<?php echo $item['product_id']; ?>" 
+                  <?php if ($item['has_image'] && !empty($item['product_image_url'])): ?>
+                    <!-- Display actual product image from Firebase Storage -->
+                    <img src="<?php echo htmlspecialchars($item['product_image_url']); ?>" 
                          alt="<?php echo htmlspecialchars($item['name']); ?>"
                          class="product-image"
                          id="product-image-<?php echo $index; ?>">
@@ -835,9 +843,11 @@ $grand_total = $total + $delivery_fee;
                 <!-- Product Name with Category and Stock Status Indicators -->
                 <div class="product-name" id="product-name-<?php echo $index; ?>">
                   <div style="font-weight: bold;"><?php echo htmlspecialchars($item['name']); ?></div>
+                  <?php if (!empty($item['category_name'])): ?>
                   <div style="font-size: 11px; color: #666; margin-top: 2px;">
                     📂 <?php echo htmlspecialchars($item['category_name']); ?>
                   </div>
+                  <?php endif; ?>
                   <!-- Dynamic stock status warnings -->
                   <?php if ($item['stock_status'] == 'out_of_stock'): ?>
                     <div style="color: #dc3545; font-size: 10px; font-weight: bold;">⚠️ OUT OF STOCK</div>
@@ -857,7 +867,7 @@ $grand_total = $total + $delivery_fee;
                 <div class="quantity-controls">
                   <!-- Decrease quantity button -->
                   <button class="qty-btn" 
-                          onclick="updateQuantity(<?php echo $item['cart_item_id']; ?>, -1, <?php echo $index; ?>)"
+                          onclick="updateQuantity('<?php echo $item['cart_item_id']; ?>', -1, <?php echo $index; ?>)"
                           id="minus-btn-<?php echo $index; ?>"
                           <?php echo ($item['stock_status'] == 'out_of_stock') ? 'disabled' : ''; ?>>-</button>
                   
@@ -868,7 +878,7 @@ $grand_total = $total + $delivery_fee;
                   
                   <!-- Increase quantity button - disabled when at stock limit -->
                   <button class="qty-btn" 
-                          onclick="updateQuantity(<?php echo $item['cart_item_id']; ?>, 1, <?php echo $index; ?>)"
+                          onclick="updateQuantity('<?php echo $item['cart_item_id']; ?>', 1, <?php echo $index; ?>)"
                           id="add-btn-<?php echo $index; ?>"
                           <?php echo ($item['stock_status'] == 'out_of_stock' || $item['quantity'] >= $item['stock_quantity']) ? 'disabled' : ''; ?>>+</button>
                 </div>
@@ -881,7 +891,7 @@ $grand_total = $total + $delivery_fee;
                 <!-- Delete/Remove Button -->
                 <div>
                   <button class="delete-btn" 
-                          onclick="removeFromCart(<?php echo $item['cart_item_id']; ?>, <?php echo $index; ?>)"
+                          onclick="removeFromCart('<?php echo $item['cart_item_id']; ?>', <?php echo $index; ?>)"
                           id="delete-btn-<?php echo $index; ?>">
                     🗑️ Remove
                   </button>
@@ -1315,10 +1325,20 @@ $grand_total = $total + $delivery_fee;
         deliveryFee = cartTotal >= 500 ? 0 : 50;
         grandTotal = cartTotal + deliveryFee;
         
-        // Update all total displays throughout the page
-        document.getElementById('subtotal-display').textContent = `₱${cartTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        document.getElementById('total-amount').textContent = cartTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('total-items-count').textContent = totalItems;
+        // Update all total displays throughout the page (with null checks)
+        const subtotalDisplay = document.getElementById('subtotal-display');
+        const totalAmountDisplay = document.getElementById('total-amount');
+        const totalItemsCount = document.getElementById('total-items-count');
+        
+        if (subtotalDisplay) {
+          subtotalDisplay.textContent = `₱${cartTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+        if (totalAmountDisplay) {
+          totalAmountDisplay.textContent = cartTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        if (totalItemsCount) {
+          totalItemsCount.textContent = totalItems;
+        }
         
         // Update navigation cart badge
         const cartBadge = document.querySelector('.cart-badge');
@@ -1330,25 +1350,26 @@ $grand_total = $total + $delivery_fee;
         const freeDeliveryNotice = document.getElementById('free-delivery-notice');
         const freeDeliveryAmount = document.getElementById('free-delivery-amount');
         
-        if (cartTotal < 500 && deliveryFee > 0) {
-          freeDeliveryNotice.style.display = 'block';
-          freeDeliveryAmount.textContent = (500 - cartTotal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        } else {
-          freeDeliveryNotice.style.display = 'none';
+        if (freeDeliveryNotice && freeDeliveryAmount) {
+          if (cartTotal < 500 && deliveryFee > 0) {
+            freeDeliveryNotice.style.display = 'block';
+            freeDeliveryAmount.textContent = (500 - cartTotal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+          } else {
+            freeDeliveryNotice.style.display = 'none';
+          }
         }
         
         // Add visual feedback animation for total updates
-        const subtotalDisplay = document.getElementById('subtotal-display');
-        const totalAmountDisplay = document.getElementById('total-amount');
-        
-        [subtotalDisplay, totalAmountDisplay].forEach(element => {
-          element.style.transform = 'scale(1.05)';
-          element.style.transition = 'transform 0.2s ease';
-          
-          setTimeout(() => {
-            element.style.transform = 'scale(1)';
-          }, 200);
-        });
+        if (subtotalDisplay && totalAmountDisplay) {
+          [subtotalDisplay, totalAmountDisplay].forEach(element => {
+            element.style.transform = 'scale(1.05)';
+            element.style.transition = 'transform 0.2s ease';
+            
+            setTimeout(() => {
+              element.style.transform = 'scale(1)';
+            }, 200);
+          });
+        }
       }
       
       // AJAX function to update item quantity with optimistic UI updates
@@ -1364,6 +1385,17 @@ $grand_total = $total + $delivery_fee;
         const minusBtn = document.getElementById(`minus-btn-${itemIndex}`);
         const totalPriceElement = document.getElementById(`total-price-${itemIndex}`);
         
+        // Calculate new quantity
+        const currentQuantity = parseInt(quantityDisplay.textContent);
+        const newQuantity = currentQuantity + change;
+        
+        // Validate quantity
+        if (newQuantity < 0) {
+          showNotification('Invalid quantity', 'error');
+          isUpdating = false;
+          return;
+        }
+        
         // Add loading state visual feedback
         [addBtn, minusBtn].forEach(btn => btn?.classList.add('loading'));
         
@@ -1377,15 +1409,13 @@ $grand_total = $total + $delivery_fee;
             },
             body: JSON.stringify({ 
               cart_item_id: cartItemId, 
-              change: change 
+              quantity: newQuantity
             })
           });
           
           const data = await response.json();
           
           if (data.success) {
-            const currentQuantity = parseInt(quantityDisplay.textContent);
-            const newQuantity = currentQuantity + change;
             const itemData = document.getElementById(`item-data-${itemIndex}`);
             const price = parseFloat(itemData.dataset.price);
             
@@ -1729,8 +1759,11 @@ $grand_total = $total + $delivery_fee;
         // Initialize all cart totals
         updateCartTotals();
         
-        // Initialize free map (no API key required)
-        initMap();
+        // Initialize free map only if cart is not empty (no API key required)
+        const mapElement = document.getElementById('map');
+        if (mapElement) {
+          initMap();
+        }
         
         // Enhanced payment method selection with visual feedback
         const paymentMethods = document.querySelectorAll('.payment-method');
@@ -1785,6 +1818,60 @@ $grand_total = $total + $delivery_fee;
       if (oldSidebar) {
         oldSidebar.remove();
       }
+    </script>
+    
+    <!-- Firebase Auth Token Refresh Script -->
+    <script>
+      // Initialize Firebase
+      const firebaseConfig = {
+        apiKey: "AIzaSyBDjLdUULgF3Dc4ijvDWC4hR8lE2FjfwN0",
+        authDomain: "anf-chocolate.firebaseapp.com",
+        projectId: "anf-chocolate",
+        storageBucket: "anf-chocolate.firebasestorage.app",
+        messagingSenderId: "655675394049",
+        appId: "1:655675394049:web:88e1819f8fd7db52a8a10c"
+      };
+      
+      firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      
+      // Check auth state and refresh token if needed
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          try {
+            // Get fresh ID token
+            const token = await user.getIdToken(true); // Force refresh
+            
+            // Update session with new token
+            const formData = new FormData();
+            formData.append('idToken', token);
+            formData.append('email', user.email);
+            formData.append('uid', user.uid); // Include uid for session storage
+            
+            const response = await fetch('login_popup.php', {
+              method: 'POST',
+              body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+              console.log('✓ Authentication token refreshed');
+              
+              // Reload page if cart was empty due to token issue
+              <?php if (empty($cart_items) && isset($_SESSION['firebase_token'])): ?>
+                console.log('Reloading to fetch cart with fresh token...');
+                setTimeout(() => location.reload(), 500);
+              <?php endif; ?>
+            }
+          } catch (error) {
+            console.error('Token refresh error:', error);
+          }
+        } else {
+          console.log('No user authenticated, redirecting...');
+          window.location.href = 'Welcome.php';
+        }
+      });
     </script>
     
     <style>

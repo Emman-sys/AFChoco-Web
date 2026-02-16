@@ -1,0 +1,246 @@
+{
+  "generated_at": "2026-02-16 10:40:35",
+  "prediction_period": {
+    "start_date": "2026-02-16",
+    "end_date": "2026-03-17",
+    "days": 30
+  },
+  "predictions": [
+    {
+      "date": "2026-02-16",
+      "day_name": "Monday",
+      "predicted_revenue": 4590.01,
+      "predicted_orders": 11,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-17",
+      "day_name": "Tuesday",
+      "predicted_revenue": 4366.13,
+      "predicted_orders": 11,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-18",
+      "day_name": "Wednesday",
+      "predicted_revenue": 4513.43,
+      "predicted_orders": 11,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-19",
+      "day_name": "Thursday",
+      "predicted_revenue": 4302.98,
+      "predicted_orders": 11,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-20",
+      "day_name": "Friday",
+      "predicted_revenue": 4546.52,
+      "predicted_orders": 11,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-21",
+      "day_name": "Saturday",
+      "predicted_revenue": 4034.69,
+      "predicted_orders": 10,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-22",
+      "day_name": "Sunday",
+      "predicted_revenue": 4711.38,
+      "predicted_orders": 12,
+      "confidence": "high"
+    },
+    {
+      "date": "2026-02-23",
+      "day_name": "Monday",
+      "predicted_revenue": 4703.37,
+      "predicted_orders": 12,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-02-24",
+      "day_name": "Tuesday",
+      "predicted_revenue": 4536.98,
+      "predicted_orders": 11,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-02-25",
+      "day_name": "Wednesday",
+      "predicted_revenue": 4711.38,
+      "predicted_orders": 12,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-02-26",
+      "day_name": "Thursday",
+      "predicted_revenue": 4479.36,
+      "predicted_orders": 11,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-02-27",
+      "day_name": "Friday",
+      "predicted_revenue": 4238.45,
+      "predicted_orders": 11,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-02-28",
+      "day_name": "Saturday",
+      "predicted_revenue": 3947.1,
+      "predicted_orders": 10,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-03-01",
+      "day_name": "Sunday",
+      "predicted_revenue": 4497.08,
+      "predicted_orders": 11,
+      "confidence": "medium"
+    },
+    {
+      "date": "2026-03-02",
+      "day_name": "Monday",
+      "predicted_revenue": 4581.58,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-03",
+      "day_name": "Tuesday",
+      "predicted_revenue": 4444.94,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-04",
+      "day_name": "Wednesday",
+      "predicted_revenue": 4682.55,
+      "predicted_orders": 12,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-05",
+      "day_name": "Thursday",
+      "predicted_revenue": 4392.0,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-06",
+      "day_name": "Friday",
+      "predicted_revenue": 4542.99,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-07",
+      "day_name": "Saturday",
+      "predicted_revenue": 4361.37,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-08",
+      "day_name": "Sunday",
+      "predicted_revenue": 4338.91,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-09",
+      "day_name": "Monday",
+      "predicted_revenue": 4480.23,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-10",
+      "day_name": "Tuesday",
+      "predicted_revenue": 4711.38,
+      "predicted_orders": 12,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-11",
+      "day_name": "Wednesday",
+      "predicted_revenue": 4646.31,
+      "predicted_orders": 12,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-12",
+      "day_name": "Thursday",
+      "predicted_revenue": 4368.88,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-13",
+      "day_name": "Friday",
+      "predicted_revenue": 4464.88,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-14",
+      "day_name": "Saturday",
+      "predicted_revenue": 4306.11,
+      "predicted_orders": 11,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-15",
+      "day_name": "Sunday",
+      "predicted_revenue": 4711.38,
+      "predicted_orders": 12,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-16",
+      "day_name": "Monday",
+      "predicted_revenue": 4711.38,
+      "predicted_orders": 12,
+      "confidence": "low"
+    },
+    {
+      "date": "2026-03-17",
+      "day_name": "Tuesday",
+      "predicted_revenue": 4595.25,
+      "predicted_orders": 11,
+      "confidence": "low"
+    }
+  ],
+  "insights": {
+    "total_predicted_revenue": 134519.0,
+    "average_daily_revenue": 4483.97,
+    "best_sales_day": {
+      "date": "2026-02-22",
+      "revenue": 4711.38
+    },
+    "worst_sales_day": {
+      "date": "2026-02-28",
+      "revenue": 3947.1
+    },
+    "weekend_vs_weekday": {
+      "avg_weekend_revenue": 4363.5,
+      "avg_weekday_revenue": 4527.77,
+      "weekend_premium": -3.6
+    }
+  },
+  "historical_context": {
+    "avg_daily_revenue": 1884.5501968503936,
+    "avg_daily_orders": 4.9045275590551185,
+    "max_daily_revenue": 6868.0,
+    "min_daily_revenue": 62.0,
+    "total_revenue": 1914703.0,
+    "total_orders": 4983,
+    "avg_order_value": 384.2470399357817
+  }
+}

@@ -4,3 +4,14 @@ node_modules/
 .DS_Store
 /.idea/
 npm-debug.log
+
+# Firebase
+firebase-debug.log
+firestore-debug.log
+.firebase/
+serviceAccountKey.json
+config/serviceAccountKey.json
+
+# Build outputs
+dist/
+build/

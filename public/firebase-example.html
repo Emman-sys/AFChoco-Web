@@ -1,0 +1,237 @@
+<!-- Example: Updated HTML with Firebase Authentication -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A&F Chocolate - Firebase Example</title>
+</head>
+<body>
+    <div id="auth-container">
+        <!-- Show when user is not logged in -->
+        <div id="login-form" style="display: none;">
+            <h2>Login</h2>
+            <input type="email" id="login-email" placeholder="Email">
+            <input type="password" id="login-password" placeholder="Password">
+            <button onclick="login()">Login</button>
+            <button onclick="showSignup()">Sign Up</button>
+        </div>
+
+        <!-- Show when user is not logged in -->
+        <div id="signup-form" style="display: none;">
+            <h2>Sign Up</h2>
+            <input type="text" id="signup-firstname" placeholder="First Name">
+            <input type="text" id="signup-lastname" placeholder="Last Name">
+            <input type="email" id="signup-email" placeholder="Email">
+            <input type="password" id="signup-password" placeholder="Password">
+            <button onclick="signup()">Create Account</button>
+            <button onclick="showLogin()">Back to Login</button>
+        </div>
+
+        <!-- Show when user is logged in -->
+        <div id="user-info" style="display: none;">
+            <h2>Welcome, <span id="user-name"></span>!</h2>
+            <button onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div id="products-container">
+        <!-- Products will be loaded here -->
+    </div>
+
+    <!-- Firebase SDK (Modular) -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { 
+            getAuth, 
+            createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword,
+            signOut,
+            onAuthStateChanged 
+        } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+        import { 
+            getFirestore, 
+            collection, 
+            getDocs, 
+            doc, 
+            setDoc,
+            getDoc 
+        } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJPY70uT6qNqs2J2GW3zWAAKeQ_rQ1tUk",
+            authDomain: "anf-chocolate.firebaseapp.com",
+            projectId: "anf-chocolate",
+            storageBucket: "anf-chocolate.firebasestorage.app",
+            messagingSenderId: "899676195175",
+            appId: "1:899676195175:web:0c38236d38cb4103cc47c2",
+            measurementId: "G-FGSY080FNM"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Make functions globally available
+        window.auth = auth;
+        window.db = db;
+
+        // Authentication state observer
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is signed in
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('signup-form').style.display = 'none';
+                document.getElementById('user-info').style.display = 'block';
+                
+                // Get user profile from Firestore
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    document.getElementById('user-name').textContent = 
+                        `${userData.firstName} ${userData.lastName}`;
+                } else {
+                    document.getElementById('user-name').textContent = user.email;
+                }
+                
+                // Load products
+                loadProducts();
+            } else {
+                // User is signed out
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('signup-form').style.display = 'none';
+                document.getElementById('user-info').style.display = 'none';
+            }
+        });
+
+        // Signup function
+        window.signup = async function() {
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const firstName = document.getElementById('signup-firstname').value;
+            const lastName = document.getElementById('signup-lastname').value;
+
+            try {
+                // Create user in Firebase Auth
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+
+                // Create user profile in Firestore
+                await setDoc(doc(db, 'users', user.uid), {
+                    email: email,
+                    firstName: firstName,
+                    lastName: lastName,
+                    role: 'user',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+
+                alert('Account created successfully!');
+            } catch (error) {
+                console.error('Signup error:', error);
+                alert(error.message);
+            }
+        };
+
+        // Login function
+        window.login = async function() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                alert('Login successful!');
+            } catch (error) {
+                console.error('Login error:', error);
+                alert(error.message);
+            }
+        };
+
+        // Logout function
+        window.logout = async function() {
+            try {
+                await signOut(auth);
+                alert('Logged out successfully!');
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert(error.message);
+            }
+        };
+
+        // Show/hide forms
+        window.showSignup = function() {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('signup-form').style.display = 'block';
+        };
+
+        window.showLogin = function() {
+            document.getElementById('login-form').style.display = 'block';
+            document.getElementById('signup-form').style.display = 'none';
+        };
+
+        // Load products from Firestore
+        window.loadProducts = async function() {
+            try {
+                const productsCol = collection(db, 'products');
+                const productSnapshot = await getDocs(productsCol);
+                
+                const productsContainer = document.getElementById('products-container');
+                productsContainer.innerHTML = '<h2>Products</h2>';
+                
+                productSnapshot.forEach((doc) => {
+                    const product = doc.data();
+                    const productDiv = document.createElement('div');
+                    productDiv.innerHTML = `
+                        <h3>${product.name}</h3>
+                        <p>${product.description}</p>
+                        <p>Price: $${product.price}</p>
+                        <button onclick="addToCart('${doc.id}')">Add to Cart</button>
+                    `;
+                    productsContainer.appendChild(productDiv);
+                });
+            } catch (error) {
+                console.error('Error loading products:', error);
+            }
+        };
+
+        // Add to cart function (example)
+        window.addToCart = async function(productId) {
+            const user = auth.currentUser;
+            if (!user) {
+                alert('Please login first');
+                return;
+            }
+
+            // Get ID token for API requests
+            const idToken = await user.getIdToken();
+
+            try {
+                const response = await fetch('http://localhost:3000/api/cart/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({
+                        productId: productId,
+                        quantity: 1,
+                        price: 10.99 // Get from product data
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert('Added to cart!');
+                } else {
+                    alert('Error adding to cart');
+                }
+            } catch (error) {
+                console.error('Error adding to cart:', error);
+                alert('Error adding to cart');
+            }
+        };
+    </script>
+</body>
+</html>

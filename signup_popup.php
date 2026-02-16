@@ -4,69 +4,74 @@ ob_start();
 ob_clean();
 header('Content-Type: application/json');
 
+require_once 'firebase_api.php';
+
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         echo json_encode(['success' => false, 'message' => 'Invalid request']);
         exit;
     }
 
+    $idToken = $_POST['idToken'] ?? '';
     $username = trim($_POST['username'] ?? '');
     $email = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $uid = $_POST['uid'] ?? '';
     $phone = trim($_POST['phone'] ?? '');
     $address = trim($_POST['address'] ?? '');
 
-    if (empty($username) || empty($email) || empty($password) || empty($phone) || empty($address)) {
-        echo json_encode(['success' => false, 'message' => 'Please fill in all fields']);
+    if (empty($idToken)) {
+        echo json_encode(['success' => false, 'message' => 'Authentication token required']);
         exit;
     }
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        echo json_encode(['success' => false, 'message' => 'Invalid email format']);
+    if (empty($username) || empty($email)) {
+        echo json_encode(['success' => false, 'message' => 'Username and email are required']);
         exit;
     }
-
-    if (strlen($password) < 6) {
-        echo json_encode(['success' => false, 'message' => 'Password must be at least 6 characters']);
-        exit;
-    }
-
-    $conn = new mysqli("localhost", "root", "", "a&f chocolate");
     
-    if ($conn->connect_error) {
-        echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+    if (empty($uid)) {
+        echo json_encode(['success' => false, 'message' => 'User ID (uid) is required']);
         exit;
     }
 
-    $stmt = $conn->prepare("SELECT email FROM users WHERE email = ?");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        echo json_encode(['success' => false, 'message' => 'Email already exists']);
-        exit;
-    }
-
-    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-    $stmt = $conn->prepare("INSERT INTO users (name, email, password_hash, phone_number, address) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssss", $username, $email, $hashed_password, $phone, $address);
-
-    if ($stmt->execute()) {
+    // Initialize Firebase API
+    $firebaseAPI = new FirebaseAPI();
+    
+    // Set auth token
+    $firebaseAPI->setAuthToken($idToken);
+    
+    // Create user profile in Firestore via API
+    $profileData = [
+        'username' => $username,
+        'phoneNumber' => $phone,
+        'address' => $address
+    ];
+    
+    $result = $firebaseAPI->createProfile($profileData);
+    
+    if ($result && isset($result['success']) && $result['success']) {
+        // Set session after successful signup
+        $_SESSION['firebase_token'] = $idToken;
+        $_SESSION['user_id'] = $uid;
+        $_SESSION['user_email'] = $email;
+        $_SESSION['user_name'] = $username;
+        $_SESSION['user_role'] = 'user';
+        
         echo json_encode([
             'success' => true,
-            'message' => 'Account created successfully! You can now login.'
+            'message' => 'Account created successfully!',
+            'redirect' => 'MainPage.php'
         ]);
     } else {
-        echo json_encode(['success' => false, 'message' => 'Error creating account']);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error creating user profile: ' . ($result['error'] ?? 'Unknown error')
+        ]);
     }
 
-    $stmt->close();
-    $conn->close();
-
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'System error occurred']);
+    error_log('Signup error: ' . $e->getMessage());
+    echo json_encode(['success' => false, 'message' => 'Registration failed']);
 }
 exit;
 ?>

@@ -1,26 +1,49 @@
 <?php
 session_start();
+require_once 'firebase_api.php';
 
 // Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
+if (!isset($_SESSION['user_id']) && !isset($_SESSION['user_email'])) {
     header('Location: Welcome.php');
     exit;
 }
 
-// Database connection
-$conn = new mysqli("localhost", "root", "", "a&f chocolate");
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+// Initialize Firebase API
+$firebaseAPI = new FirebaseAPI();
+
+// Get user data from Firebase
+$user_id = $_SESSION['user_id'] ?? '';
+$user_email = $_SESSION['user_email'] ?? '';
+$user_name = $_SESSION['user_name'] ?? 'User';
+
+// Fetch full user profile from Firebase
+$user_data = [
+    'user_id' => $user_id,
+    'name' => $user_name,
+    'email' => $user_email,
+    'phone_number' => '',
+    'address' => '',
+    'order_notifications' => 1,
+    'promo_notifications' => 0,
+    'email_notifications' => 1,
+    'language' => 'en'
+];
+
+if (isset($_SESSION['firebase_token'])) {
+    $firebaseAPI->setAuthToken($_SESSION['firebase_token']);
+    $profile = $firebaseAPI->getProfile();
+    
+    if ($profile && isset($profile['success']) && $profile['success']) {
+        $userData = $profile['user'];
+        $user_data = array_merge($user_data, [
+            'name' => $userData['username'] ?? $userData['firstName'] ?? $user_name,
+            'email' => $userData['email'] ?? $user_email,
+            'phone_number' => $userData['phoneNumber'] ?? '',
+            'address' => $userData['address'] ?? '',
+        ]);
+    }
 }
 
-// Get user data
-$user_id = $_SESSION['user_id'];
-$stmt = $conn->prepare("SELECT * FROM users WHERE user_id = ?");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$user_data = $result->fetch_assoc();
-$stmt->close();
 
 // Handle AJAX requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -38,29 +61,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 exit;
             }
             
-            // Check if email exists for other users
-            $stmt = $conn->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
-            $stmt->bind_param("si", $email, $user_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            // Update user profile in Firebase
+            $updateData = [
+                'username' => $name,
+                'firstName' => $name,
+                'email' => $email,
+                'phoneNumber' => $phone,
+                'address' => $address
+            ];
             
-            if ($result->num_rows > 0) {
-                echo json_encode(['success' => false, 'message' => 'Email already exists']);
-                exit;
-            }
+            $result = $firebaseAPI->updateProfile($updateData);
             
-            // Update user profile
-            $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, phone_number = ?, address = ? WHERE user_id = ?");
-            $stmt->bind_param("ssssi", $name, $email, $phone, $address, $user_id);
-            
-            if ($stmt->execute()) {
+            if ($result && isset($result['success']) && $result['success']) {
                 $_SESSION['user_name'] = $name;
                 $_SESSION['user_email'] = $email;
                 echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
             } else {
-                echo json_encode(['success' => false, 'message' => 'Error updating profile']);
+                $errorMsg = $result['error'] ?? 'Error updating profile';
+                echo json_encode(['success' => false, 'message' => $errorMsg]);
             }
-            $stmt->close();
             break;
             
         case 'change_password':
@@ -83,29 +102,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 exit;
             }
             
-            // Verify current password
-            $stmt = $conn->prepare("SELECT password_hash FROM users WHERE user_id = ?");
-            $stmt->bind_param("i", $user_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $user = $result->fetch_assoc();
-            
-            if (!password_verify($current, $user['password_hash'])) {
-                echo json_encode(['success' => false, 'message' => 'Current password is incorrect']);
-                exit;
-            }
-            
-            // Update password
-            $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
-            $stmt->bind_param("si", $new_hash, $user_id);
-            
-            if ($stmt->execute()) {
-                echo json_encode(['success' => true, 'message' => 'Password changed successfully!']);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Error updating password']);
-            }
-            $stmt->close();
+            // Note: Password changes should be handled by Firebase Authentication
+            // This would require Firebase Admin SDK on the backend
+            echo json_encode(['success' => false, 'message' => 'Password changes must be done through Firebase Authentication']);
             break;
             
         case 'submit_support':
@@ -117,27 +116,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 exit;
             }
             
-            // Create support_requests table if it doesn't exist
-            $conn->query("CREATE TABLE IF NOT EXISTS support_requests (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT,
-                support_type VARCHAR(50),
-                message TEXT,
-                status VARCHAR(20) DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )");
+            // Store support request in session or log it
+            // In a full implementation, you would send this to Firebase or an email service
+            error_log("Support Request - User: $user_id, Type: $support_type, Message: $message");
             
-            // Insert support request
-            $stmt = $conn->prepare("INSERT INTO support_requests (user_id, support_type, message) VALUES (?, ?, ?)");
-            $stmt->bind_param("iss", $user_id, $support_type, $message);
-            
-            if ($stmt->execute()) {
-                echo json_encode(['success' => true, 'message' => 'Support request submitted successfully!']);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Error submitting request']);
-            }
-            $stmt->close();
+            echo json_encode(['success' => true, 'message' => 'Support request submitted successfully!']);
             break;
             
         case 'save_notification_settings':
@@ -145,40 +128,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $promo_notifications = isset($_POST['promoNotifications']) ? 1 : 0;
             $email_notifications = isset($_POST['emailNotifications']) ? 1 : 0;
             
-            // Update notification settings in users table
-            $stmt = $conn->prepare("UPDATE users SET order_notifications = ?, promo_notifications = ?, email_notifications = ? WHERE user_id = ?");
-            $stmt->bind_param("iiii", $order_notifications, $promo_notifications, $email_notifications, $user_id);
+            // Update notification settings in Firebase
+            $updateData = [
+                'orderNotifications' => $order_notifications,
+                'promoNotifications' => $promo_notifications,
+                'emailNotifications' => $email_notifications
+            ];
             
-            if ($stmt->execute()) {
+            $result = $firebaseAPI->updateProfile($updateData);
+            
+            if ($result && isset($result['success']) && $result['success']) {
                 echo json_encode(['success' => true, 'message' => 'Notification settings saved successfully!']);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Error saving notification settings']);
             }
-            $stmt->close();
             break;
             
-        // language setting removed
-            
         case 'get_user_settings':
-            // Get all user settings from users table
-            $stmt = $conn->prepare("SELECT * FROM users WHERE user_id = ?");
-            $stmt->bind_param("i", $user_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            // Get user settings from Firebase
+            $profile = $firebaseAPI->getProfile();
             
-            if ($result->num_rows > 0) {
-                $user = $result->fetch_assoc();
+            if ($profile && isset($profile['success']) && $profile['success']) {
+                $user = $profile['user'];
                 $settings = [
-                    'orderNotifications' => $user['order_notifications'] ?? 1,
-                    'promoNotifications' => $user['promo_notifications'] ?? 0,
-                    'emailNotifications' => $user['email_notifications'] ?? 1,
+                    'orderNotifications' => $user['orderNotifications'] ?? 1,
+                    'promoNotifications' => $user['promoNotifications'] ?? 0,
+                    'emailNotifications' => $user['emailNotifications'] ?? 1,
                     'language' => $user['language'] ?? 'en'
                 ];
                 echo json_encode(['success' => true, 'settings' => $settings]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'User not found']);
             }
-            $stmt->close();
             break;
             
         default:
@@ -187,15 +168,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     exit;
 }
 
-// Get user settings for initial load - ALL FROM USERS TABLE NOW
+// Get user settings for initial load
 $user_settings = [
     'orderNotifications' => $user_data['order_notifications'] ?? 1,
     'promoNotifications' => $user_data['promo_notifications'] ?? 0,
     'emailNotifications' => $user_data['email_notifications'] ?? 1,
     'language' => $user_data['language'] ?? 'en'
 ];
-
-$conn->close();
 ?>
 
 <!DOCTYPE html>
@@ -209,6 +188,12 @@ $conn->close();
     rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
   />
+  <!-- Leaflet CSS for maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Maps Places API for address autocomplete (optional enhancement) -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCJPY70uT6qNqs2J2GW3zWAAKeQ_rQ1tUk&libraries=places&callback=initGoogleMaps" async defer></script>
+  <!-- Leaflet JS for maps -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * {
       margin: 0;
@@ -340,8 +325,34 @@ $conn->close();
       border-radius: 10px;
       width: 90%;
       max-width: 500px;
+      max-height: 85vh;
+      overflow-y: auto;
       position: relative;
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    /* Make profile modal wider to accommodate map */
+    #profileModal .modal-content {
+      max-width: 600px;
+    }
+
+    /* Custom scrollbar styling */
+    .modal-content::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .modal-content::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+
+    .modal-content::-webkit-scrollbar-thumb {
+      background: #4b00b3;
+      border-radius: 10px;
+    }
+
+    .modal-content::-webkit-scrollbar-thumb:hover {
+      background: #6b16ac;
     }
 
     .close {
@@ -503,6 +514,86 @@ $conn->close();
       margin-top: 10px;
     }
 
+    /* Address autocomplete styles */
+    .address-input-container {
+      position: relative;
+    }
+
+    .address-suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 5px 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .address-suggestion {
+      padding: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      transition: background 0.2s;
+    }
+
+    .address-suggestion:last-child {
+      border-bottom: none;
+    }
+
+    .address-suggestion:hover {
+      background-color: #f5f5f5;
+    }
+
+    .address-suggestion strong {
+      display: block;
+      color: #333;
+      margin-bottom: 3px;
+    }
+
+    .address-suggestion small {
+      color: #666;
+      font-size: 13px;
+    }
+
+    #address {
+      border-radius: 5px 5px 0 0;
+    }
+
+    /* Map container styles */
+    #map {
+      width: 100%;
+      height: 250px;
+      border-radius: 5px;
+      margin-top: 10px;
+      border: 2px solid #ddd;
+      display: none; /* Hidden by default, shown when location is available */
+    }
+
+    #map.active {
+      display: block;
+    }
+
+    .map-info {
+      font-size: 13px;
+      color: #666;
+      margin-top: 5px;
+      display: none;
+    }
+
+    .map-info.active {
+      display: block;
+    }
+
+    .map-info i {
+      color: #4b00b3;
+    }
+
     @media (max-width: 768px) {
       .settings-grid {
         flex-direction: column;
@@ -525,6 +616,11 @@ $conn->close();
       .modal-content {
         margin: 10% auto;
         padding: 20px;
+        max-height: 90vh;
+      }
+
+      #map {
+        height: 200px;
       }
     }
   </style>
@@ -589,7 +685,21 @@ $conn->close();
         </div>
         <div class="form-group">
           <label for="address">Address:</label>
-          <textarea id="address" rows="3"><?php echo htmlspecialchars($user_data['address']); ?></textarea>
+          <div class="address-input-container">
+            <textarea id="address" rows="3" placeholder="Start typing your address..."><?php echo htmlspecialchars($user_data['address']); ?></textarea>
+            <div id="address-suggestions" class="address-suggestions"></div>
+          </div>
+          <small style="color: #666; font-size: 13px; display: block; margin-top: 5px;">
+            <i class="fas fa-map-marker-alt"></i> Type at least 3 characters to see suggestions
+          </small>
+          <button type="button" class="btn btn-secondary" onclick="getUserLocation()" style="margin-top: 10px; padding: 8px 16px; font-size: 14px;">
+            <i class="fas fa-crosshairs"></i> Use My Current Location
+          </button>
+          <!-- Map container -->
+          <div id="map"></div>
+          <div id="map-info" class="map-info">
+            <i class="fas fa-info-circle"></i> Click on the map to set your exact location or drag the marker
+          </div>
         </div>
         <button type="submit" class="btn">Save Changes</button>
         <button type="button" class="btn btn-secondary" onclick="closeModal('profileModal')">Cancel</button>
@@ -709,6 +819,26 @@ $conn->close();
     // Modal Functions
     function openModal(modalId) {
       document.getElementById(modalId).style.display = 'block';
+      
+      // If opening profile modal, initialize map if not already done
+      if (modalId === 'profileModal') {
+        setTimeout(() => {
+          if (!map) {
+            // Initialize with default Philippines location
+            initializeMap();
+          }
+          
+          // If map exists and needs resizing (for Leaflet)
+          if (map && map.invalidateSize) {
+            map.invalidateSize();
+          }
+          
+          // Try to geocode existing address
+          if (addressInput && addressInput.value.trim()) {
+            geocodeAddress(addressInput.value.trim());
+          }
+        }, 300);
+      }
     }
 
     function closeModal(modalId) {
@@ -867,9 +997,393 @@ $conn->close();
 
     // Language option removed; no client handler
 
+    // ============ Address Autocomplete Functionality ============
+    let addressTimeout;
+    let googleAutocompleteService = null;
+    let googlePlacesService = null;
+    let useGooglePlaces = false;
+    let map = null;
+    let marker = null;
+    const addressInput = document.getElementById('address');
+    const suggestionsContainer = document.getElementById('address-suggestions');
+    const mapContainer = document.getElementById('map');
+    const mapInfo = document.getElementById('map-info');
+
+    // Initialize Google Places (only for autocomplete) - called when API loads
+    window.initGoogleMaps = function() {
+      // Check if Google Places API loaded successfully
+      if (typeof google !== 'undefined' && google.maps && google.maps.places) {
+        googleAutocompleteService = new google.maps.places.AutocompleteService();
+        googlePlacesService = new google.maps.places.PlacesService(document.createElement('div'));
+        useGooglePlaces = true;
+        console.log('Google Places API loaded successfully for autocomplete');
+      }
+    };
+
+    // Initialize Leaflet Map (free, no API key needed)
+    function initializeMap(lat = 13.7565, lng = 121.0583) {
+      if (!window.L) {
+        console.error('Leaflet library not loaded');
+        return;
+      }
+      
+      // Create map centered on location
+      map = L.map('map').setView([lat, lng], 15);
+      
+      // Add OpenStreetMap tile layer (free)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
+      
+      // Add draggable marker
+      marker = L.marker([lat, lng], {
+        draggable: true,
+        title: 'Your Location'
+      }).addTo(map);
+      
+      // Customize marker icon to be more visible
+      const customIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+      marker.setIcon(customIcon);
+      
+      // Update address when marker is dragged
+      marker.on('dragend', function() {
+        const position = marker.getLatLng();
+        reverseGeocode(position.lat, position.lng);
+      });
+      
+      // Allow clicking on map to set location
+      map.on('click', function(event) {
+        const clickedLocation = event.latlng;
+        marker.setLatLng(clickedLocation);
+        map.panTo(clickedLocation);
+        reverseGeocode(clickedLocation.lat, clickedLocation.lng);
+      });
+      
+      // Try to geocode existing address if available
+      if (addressInput && addressInput.value.trim()) {
+        geocodeAddress(addressInput.value.trim());
+      }
+    }
+
+    // Geocode an address to get coordinates using Nominatim
+    async function geocodeAddress(address) {
+      if (!address) return;
+      
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=ph&limit=1`,
+          {
+            headers: {
+              'User-Agent': 'AFChocolate-Web/1.0'
+            }
+          }
+        );
+        
+        const results = await response.json();
+        
+        if (results && results.length > 0) {
+          const location = results[0];
+          updateMapLocation(parseFloat(location.lat), parseFloat(location.lon));
+        }
+      } catch (error) {
+        console.error('Error geocoding address:', error);
+      }
+    }
+
+    // Reverse geocode coordinates to get address using Nominatim
+    async function reverseGeocode(lat, lng) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
+          {
+            headers: {
+              'User-Agent': 'AFChocolate-Web/1.0'
+            }
+          }
+        );
+        
+        const result = await response.json();
+        
+        if (result && result.display_name) {
+          addressInput.value = result.display_name;
+        }
+      } catch (error) {
+        console.error('Error reverse geocoding:', error);
+      }
+    }
+
+    // Update map location and marker
+    function updateMapLocation(lat, lng) {
+      if (!map || !marker) {
+        // Initialize map if not already done
+        initializeMap(lat, lng);
+      } else {
+        marker.setLatLng([lat, lng]);
+        map.setView([lat, lng], 15);
+      }
+      
+      // Show map and info
+      mapContainer.classList.add('active');
+      if (mapInfo) mapInfo.classList.add('active');
+    }
+
+    // Get user's current location
+    function getUserLocation() {
+      if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser');
+        return;
+      }
+      
+      // Show loading state
+      const btn = event.target.closest('button');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting location...';
+      btn.disabled = true;
+      
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          
+          // Update map
+          updateMapLocation(lat, lng);
+          
+          // Reverse geocode to get address
+          reverseGeocode(lat, lng);
+          
+          // Reset button
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        },
+        function(error) {
+          console.error('Error getting location:', error);
+          alert('Unable to get your location. Please check your browser permissions.');
+          
+          // Reset button
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    }
+
+    // Setup address autocomplete when profile modal opens
+    function setupAddressAutocomplete() {
+      if (!addressInput || !suggestionsContainer) return;
+
+      // Listen for address input changes
+      addressInput.addEventListener('input', function() {
+        const query = this.value.trim();
+        
+        clearTimeout(addressTimeout);
+        
+        // Only search for addresses with 3+ characters
+        if (query.length < 3) {
+          suggestionsContainer.style.display = 'none';
+          return;
+        }
+        
+        // Debounce requests
+        addressTimeout = setTimeout(() => {
+          getAddressSuggestions(query);
+        }, 500);
+      });
+
+      // Hide suggestions when clicking outside
+      document.addEventListener('click', function(event) {
+        if (!addressInput.contains(event.target) && !suggestionsContainer.contains(event.target)) {
+          suggestionsContainer.style.display = 'none';
+        }
+      });
+
+      // Focus on address input to show it's ready
+      addressInput.addEventListener('focus', function() {
+        if (this.value.trim().length >= 3) {
+          getAddressSuggestions(this.value.trim());
+        }
+      });
+    }
+
+    // Get address suggestions - try Google first, fallback to Nominatim
+    async function getAddressSuggestions(query) {
+      // Try Google Maps Places API first (if available)
+      if (useGooglePlaces && googleAutocompleteService) {
+        getGooglePlacesSuggestions(query);
+      } else {
+        // Fallback to Nominatim (free OpenStreetMap)
+        getNominatimSuggestions(query);
+      }
+    }
+
+    // Get suggestions using Google Places API
+    function getGooglePlacesSuggestions(query) {
+      const request = {
+        input: query,
+        componentRestrictions: { country: 'ph' }, // Restrict to Philippines
+        types: ['address']
+      };
+
+      try {
+        googleAutocompleteService.getPlacePredictions(request, (predictions, status) => {
+          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+            displayGooglePlacesSuggestions(predictions);
+          } else {
+            // Fallback to Nominatim if Google fails
+            console.log('Google Places failed, using Nominatim fallback');
+            getNominatimSuggestions(query);
+          }
+        });
+      } catch (error) {
+        console.error('Google Places error:', error);
+        // Fallback to Nominatim on any error
+        getNominatimSuggestions(query);
+      }
+    }
+
+    // Display Google Places suggestions
+    function displayGooglePlacesSuggestions(predictions) {
+      suggestionsContainer.innerHTML = '';
+      
+      if (!predictions || predictions.length === 0) {
+        suggestionsContainer.style.display = 'none';
+        return;
+      }
+
+      predictions.forEach((prediction) => {
+        const suggestionElement = document.createElement('div');
+        suggestionElement.className = 'address-suggestion';
+        
+        const mainText = prediction.structured_formatting.main_text;
+        const secondaryText = prediction.structured_formatting.secondary_text;
+        
+        suggestionElement.innerHTML = `
+          <strong><i class="fas fa-map-marker-alt" style="color: #4b00b3; margin-right: 5px;"></i>${mainText}</strong>
+          <small>${secondaryText || ''}</small>
+        `;
+        
+        suggestionElement.addEventListener('click', () => {
+          addressInput.value = prediction.description;
+          suggestionsContainer.style.display = 'none';
+          
+          // Store place ID for later use
+          addressInput.dataset.placeId = prediction.place_id;
+          
+          // Get place details and update map
+          if (googlePlacesService && prediction.place_id) {
+            const request = {
+              placeId: prediction.place_id,
+              fields: ['geometry', 'formatted_address']
+            };
+            
+            try {
+              googlePlacesService.getDetails(request, (place, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry) {
+                  const location = place.geometry.location;
+                  updateMapLocation(location.lat(), location.lng());
+                } else {
+                  // If Google fails, use Nominatim to geocode
+                  console.log('Google Place Details failed, using Nominatim');
+                  geocodeAddress(prediction.description);
+                }
+              });
+            } catch (error) {
+              console.error('Google Place Details error:', error);
+              // Fallback to Nominatim geocoding
+              geocodeAddress(prediction.description);
+            }
+          } else {
+            // Fallback to Nominatim geocoding
+            geocodeAddress(prediction.description);
+          }
+        });
+        
+        suggestionsContainer.appendChild(suggestionElement);
+      });
+      
+      suggestionsContainer.style.display = 'block';
+    }
+
+    // Get address suggestions using Nominatim (OpenStreetMap)
+    async function getNominatimSuggestions(query) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ph&limit=5&addressdetails=1`,
+          {
+            headers: {
+              'User-Agent': 'AFChocolate-Web/1.0'
+            }
+          }
+        );
+        
+        const suggestions = await response.json();
+        displayNominatimSuggestions(suggestions);
+        
+      } catch (error) {
+        console.error('Error getting address suggestions:', error);
+        suggestionsContainer.style.display = 'none';
+      }
+    }
+
+    // Display Nominatim (OpenStreetMap) address suggestions in dropdown
+    function displayNominatimSuggestions(suggestions) {
+      suggestionsContainer.innerHTML = '';
+      
+      if (!suggestions || suggestions.length === 0) {
+        suggestionsContainer.style.display = 'none';
+        return;
+      }
+      
+      // Create suggestion elements
+      suggestions.forEach(function(suggestion) {
+        const suggestionElement = document.createElement('div');
+        suggestionElement.className = 'address-suggestion';
+        
+        // Format the address display
+        const mainAddress = suggestion.display_name.split(',').slice(0, 2).join(',');
+        const fullAddress = suggestion.display_name;
+        
+        suggestionElement.innerHTML = `
+          <strong><i class="fas fa-map-marker-alt" style="color: #4b00b3; margin-right: 5px;"></i>${mainAddress}</strong>
+          <small>${fullAddress}</small>
+        `;
+        
+        // Handle suggestion click
+        suggestionElement.addEventListener('click', function() {
+          addressInput.value = fullAddress;
+          suggestionsContainer.style.display = 'none';
+          
+          // Store coordinates
+          addressInput.dataset.lat = suggestion.lat;
+          addressInput.dataset.lon = suggestion.lon;
+          
+          // Update map with coordinates
+          if (suggestion.lat && suggestion.lon) {
+            updateMapLocation(parseFloat(suggestion.lat), parseFloat(suggestion.lon));
+          }
+        });
+        
+        suggestionsContainer.appendChild(suggestionElement);
+      });
+      
+      suggestionsContainer.style.display = 'block';
+    }
+
     // Load user settings on page load
     document.addEventListener('DOMContentLoaded', function() {
       loadUserSettings();
+      setupAddressAutocomplete();
     });
 
     function loadUserSettings() {
